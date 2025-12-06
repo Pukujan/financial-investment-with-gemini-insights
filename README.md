@@ -5,6 +5,10 @@ A modern financial dashboard application built with React, TypeScript, and Vite.
 ## Vercel Demo:
 https://financial-investment-with-gemini-insights-2lim-blubg51u0.vercel.app/
 
+
+## Prototype & Presentation
+https://water-matrix-96907145.figma.site
+
 ## ✨ Features
 
 ### 📊 Real-Time Stock Data
