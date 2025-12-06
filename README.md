@@ -2,7 +2,8 @@
 
 A modern financial dashboard application built with React, TypeScript, and Vite. Track stocks in real-time, manage your portfolio, get AI-powered insights, and stay updated with the latest financial news.
 
-![InvestAI Dashboard](https://via.placeholder.com/800x400/0f172a/ffffff?text=InvestAI+Financial+Dashboard)
+## Vercel Demo:
+https://financial-investment-with-gemini-insights-2lim-blubg51u0.vercel.app/
 
 ## ✨ Features
 
