@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getStockQuote, getMarketNews, StockQuote, NewsArticle } from '../services/financialApi';
-import { generateAIInsights, AIInsights } from '../services/aiService';
+import { AIInsights } from '../services/aiService';
+import { getCachedAIInsights } from '../services/aiInsightsCache';
 import { mockStocks } from '../data/mockData';
 
 interface DataContextType {
@@ -8,6 +9,7 @@ interface DataContextType {
   news: NewsArticle[];
   aiInsights: AIInsights | null;
   loading: boolean;
+  aiLoading: boolean;
   error: string | null;
   lastUpdated: Date | null;
   refreshData: () => Promise<void>;
@@ -23,11 +25,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [aiInsights, setAiInsights] = useState<AIInsights | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
   const fetchAllData = async () => {
     setLoading(true);
+    setAiLoading(true);
     setError(null);
 
     try {
@@ -57,7 +60,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Fetch news
       const newsData = await getMarketNews();
       setNews(newsData);
+      
+      // Dashboard data is ready - stop loading for main UI
+      setLoading(false);
+      setLastUpdated(new Date());
 
+      // Fetch AI insights in the background (non-blocking)
       // Prepare stock data with additional fields for AI insights
       // Use only the first 8 stocks to avoid overwhelming the AI API
       const topStocks = stockResults.slice(0, 8);
@@ -73,16 +81,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      // Generate AI insights based on top 8 stocks
-      const insights = await generateAIInsights(enrichedStockData, newsData);
+      // Get AI insights with caching (non-blocking)
+      // Will use cached data if less than 15 minutes old
+      const insights = await getCachedAIInsights(enrichedStockData, newsData);
       setAiInsights(insights);
-
-      setLastUpdated(new Date());
+      setAiLoading(false);
     } catch (err) {
       console.error('Error fetching data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
-    } finally {
       setLoading(false);
+      setAiLoading(false);
     }
   };
 
@@ -102,6 +110,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         news,
         aiInsights,
         loading,
+        aiLoading,
         error,
         lastUpdated,
         refreshData,

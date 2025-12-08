@@ -64,8 +64,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         const data = docSnap.data();
         setHoldings(data.holdings || []);
       }
-    } catch (error) {
-      console.error('Error loading portfolio from Firebase:', error);
+    } catch (error: any) {
+      // Gracefully handle errors (e.g., ad blockers, network issues)
+      if (error?.code === 'permission-denied' || error?.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+        console.warn('Portfolio sync disabled (firestore blocked). Using local state only.');
+      } else {
+        console.error('Error loading portfolio from Firebase:', error);
+      }
+      // Continue with empty portfolio if load fails
     }
   };
 
@@ -76,8 +82,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         holdings: updatedHoldings,
         lastUpdated: new Date().toISOString()
       });
-    } catch (error) {
-      console.error('Error saving portfolio to Firebase:', error);
+    } catch (error: any) {
+      // Gracefully handle errors (e.g., ad blockers, network issues)
+      if (error?.code === 'permission-denied' || error?.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+        console.warn('Portfolio sync disabled (firestore blocked). Changes saved locally only.');
+      } else {
+        console.error('Error saving portfolio to Firebase:', error);
+      }
+      // Continue with local state even if save fails
     }
   };
 

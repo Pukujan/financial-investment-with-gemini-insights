@@ -4,12 +4,16 @@ import { Card } from './ui/card';
 import { useData } from '../contexts/DataContext';
 
 export function AIInsights() {
-  const { aiInsights, loading } = useData();
+  const { aiInsights, aiLoading } = useData();
 
-  if (loading) {
+  if (aiLoading) {
     return (
       <Card>
         <div className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Brain className="w-6 h-6 text-purple-600 animate-pulse" />
+            <h2 className="text-slate-900">Generating AI Insights...</h2>
+          </div>
           <div className="space-y-4">
             {[1, 2, 3].map(i => (
               <Skeleton key={i} className="h-32 w-full" />
