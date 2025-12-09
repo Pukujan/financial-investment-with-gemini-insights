@@ -50,6 +50,208 @@ export interface AIRisk {
   recommendation: string;
 }
 
+// Categorize news article using AI
+export async function categorizeNewsArticle(title: string, summary: string): Promise<string> {
+  const hasGemini = !!GEMINI_API_KEY;
+  const hasOpenRouter = !!OPENROUTER_API_KEY;
+
+  // Try AI categorization first
+  if (hasGemini || hasOpenRouter) {
+    try {
+      const prompt = `Categorize this financial news article into ONE of these categories: earnings, economy, technology, markets, healthcare, entertainment, energy.
+
+Title: ${title}
+Summary: ${summary.substring(0, 300)}
+
+Respond with ONLY the category name, nothing else.`;
+
+      let aiCategory = '';
+
+      if (hasGemini) {
+        try {
+          const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{ text: prompt }]
+              }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            aiCategory = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toLowerCase() || '';
+          }
+        } catch (e) {
+          console.error('Gemini categorization failed:', e);
+        }
+      }
+
+      // Fallback to OpenRouter if Gemini failed
+      if (!aiCategory && hasOpenRouter) {
+        try {
+          const response = await fetch(OPENROUTER_API_URL, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'Financial Investment App'
+            },
+            body: JSON.stringify({
+              model: OPENROUTER_MODEL,
+              messages: [{ role: 'user', content: prompt }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            aiCategory = data.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
+          }
+        } catch (e) {
+          console.error('OpenRouter categorization failed:', e);
+        }
+      }
+
+      // Validate AI response
+      const validCategories = ['earnings', 'economy', 'technology', 'markets', 'healthcare', 'entertainment', 'energy'];
+      if (validCategories.includes(aiCategory)) {
+        console.log(`🤖 AI categorized "${title.substring(0, 50)}..." as "${aiCategory}"`);
+        return aiCategory;
+      }
+    } catch (error) {
+      console.error('AI categorization error:', error);
+    }
+  }
+
+  // Fallback to keyword-based categorization
+  const categoryKeywords: Record<string, string[]> = {
+    earnings: ['earnings', 'revenue', 'profit', 'quarterly', 'eps', 'report', 'beats', 'misses'],
+    economy: ['fed', 'inflation', 'gdp', 'economy', 'unemployment', 'interest rate', 'recession', 'economic'],
+    technology: ['tech', 'software', 'ai', 'artificial intelligence', 'cloud', 'semiconductor', 'chip', 'data', 'cyber'],
+    markets: ['stock', 'market', 'trading', 'index', 'dow', 's&p', 'nasdaq', 'rally', 'sell-off', 'volatility'],
+    healthcare: ['drug', 'pharma', 'biotech', 'fda', 'clinical', 'trial', 'health', 'medical', 'vaccine'],
+    entertainment: ['media', 'streaming', 'content', 'entertainment', 'box office', 'gaming', 'esports'],
+    energy: ['oil', 'gas', 'energy', 'renewable', 'electric', 'battery', 'solar', 'wind', 'petroleum']
+  };
+
+  const text = `${title} ${summary}`.toLowerCase();
+
+  // Count keyword matches for each category
+  const scores: Record<string, number> = {};
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    scores[category] = keywords.filter(keyword => text.includes(keyword)).length;
+  }
+
+  // Find category with highest score
+  const bestCategory = Object.entries(scores)
+    .sort(([, a], [, b]) => b - a)[0];
+
+  // If we have a clear match, return it
+  if (bestCategory && bestCategory[1] > 0) {
+    console.log(`📰 Categorized "${title.substring(0, 50)}..." as "${bestCategory[0]}" (score: ${bestCategory[1]})`);
+    return bestCategory[0];
+  }
+
+  // Default to 'markets' if no clear category
+  console.log(`📰 Categorized "${title.substring(0, 50)}..." as "markets" (default)`);
+  return 'markets';
+}
+
+// Extract stock tickers from news article using AI
+export async function extractStockTickers(title: string, summary: string, trackedSymbols: string[]): Promise<string[]> {
+  const hasGemini = !!GEMINI_API_KEY;
+  const hasOpenRouter = !!OPENROUTER_API_KEY;
+
+  // Try AI extraction first
+  if (hasGemini || hasOpenRouter) {
+    try {
+      const prompt = `Extract stock ticker symbols mentioned in this financial news article. Only return tickers from this list: ${trackedSymbols.join(', ')}.
+
+Title: ${title}
+Summary: ${summary.substring(0, 500)}
+
+Return ONLY a comma-separated list of ticker symbols (e.g., "AAPL, MSFT, GOOGL"), or "NONE" if no tickers from the list are mentioned.`;
+
+      let aiResponse = '';
+
+      if (hasGemini) {
+        try {
+          const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{ text: prompt }]
+              }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          }
+        } catch (e) {
+          console.error('Gemini extraction failed:', e);
+        }
+      }
+
+      // Fallback to OpenRouter if Gemini failed
+      if (!aiResponse && hasOpenRouter) {
+        try {
+          const response = await fetch(OPENROUTER_API_URL, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'Financial Investment App'
+            },
+            body: JSON.stringify({
+              model: OPENROUTER_MODEL,
+              messages: [{ role: 'user', content: prompt }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            aiResponse = data.choices?.[0]?.message?.content?.trim() || '';
+          }
+        } catch (e) {
+          console.error('OpenRouter extraction failed:', e);
+        }
+      }
+
+      // Parse AI response
+      if (aiResponse && aiResponse.toUpperCase() !== 'NONE') {
+        const extractedTickers = aiResponse
+          .toUpperCase()
+          .split(',')
+          .map(t => t.trim())
+          .filter(t => trackedSymbols.includes(t));
+
+        if (extractedTickers.length > 0) {
+          console.log(`🤖 AI extracted tickers for "${title.substring(0, 50)}...": ${extractedTickers.join(', ')}`);
+          return extractedTickers;
+        }
+      }
+    } catch (error) {
+      console.error('AI ticker extraction error:', error);
+    }
+  }
+
+  // Fallback to simple text matching
+  const text = `${title} ${summary}`.toUpperCase();
+  const foundTickers = trackedSymbols.filter(symbol => text.includes(symbol));
+
+  if (foundTickers.length > 0) {
+    console.log(`📰 Text-matched tickers for "${title.substring(0, 50)}...": ${foundTickers.join(', ')}`);
+  }
+
+  return foundTickers;
+}
+
 export interface AIPortfolio {
   diversificationScore: number;
   diversificationAdvice: string;
@@ -261,9 +463,12 @@ Generate 2-3 recommendations, 2-3 trends, 2-3 risks, dynamic portfolio metrics, 
   if (hasGemini) {
     try {
       console.log('Attempting Gemini API...');
-      return await callGemini();
+      const result = await callGemini();
+      console.log('✓ Gemini API succeeded');
+      return result;
     } catch (error) {
       console.error('Gemini API failed:', error);
+      console.error('Gemini error details:', error instanceof Error ? error.message : error);
       // Try OpenRouter as fallback if available
       if (hasOpenRouter) {
         try {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Newspaper, ThumbsUp, ThumbsDown, Minus, ExternalLink, User, Clock } from 'lucide-react';
+import { Newspaper, ThumbsUp, ThumbsDown, Minus, ExternalLink, User, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
@@ -9,23 +10,46 @@ import { type NewsArticle } from '../services/financialApi';
 import { useData } from '../contexts/DataContext';
 
 export function NewsFeed() {
-  const { news, loading } = useData();
-  const [filteredNews, setFilteredNews] = useState<NewsArticle[]>([]);
+  const { news: allNews, loading: dataLoading } = useData();
+  const [displayedNews, setDisplayedNews] = useState<NewsArticle[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
-    filterNews();
-  }, [news, selectedCategory]);
+    // Filter news by category
+    const filtered = selectedCategory === 'all'
+      ? allNews
+      : allNews.filter(article => article.category === selectedCategory);
 
+    // Paginate
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const endIdx = startIdx + itemsPerPage;
+    setDisplayedNews(filtered.slice(startIdx, endIdx));
+  }, [allNews, selectedCategory, currentPage]);
 
-  const filterNews = () => {
-    if (selectedCategory === 'all') {
-      setFilteredNews(news);
-    } else {
-      setFilteredNews(news.filter(article =>
-        article.category.toLowerCase() === selectedCategory.toLowerCase()
-      ));
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    setCurrentPage(1); // Reset to first page when changing category
+  };
+
+  const totalPages = Math.ceil(
+    (selectedCategory === 'all'
+      ? allNews.length
+      : allNews.filter(a => a.category === selectedCategory).length
+    ) / itemsPerPage
+  );
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
     }
   };
 
@@ -67,7 +91,7 @@ export function NewsFeed() {
 
   const categories = ['all', 'earnings', 'economy', 'technology', 'markets', 'healthcare', 'entertainment', 'energy'];
 
-  if (loading) {
+  if (dataLoading) {
     return (
       <Card>
         <CardHeader>
@@ -95,22 +119,24 @@ export function NewsFeed() {
                 <DialogTitle className="text-2xl font-bold leading-tight pr-8">
                   {selectedArticle.title}
                 </DialogTitle>
-                <DialogDescription className="flex items-center gap-4 text-sm pt-2">
-                  <div className="flex items-center gap-1">
-                    <User className="h-4 w-4" />
-                    {selectedArticle.author || 'Unknown'}
+                <DialogDescription asChild>
+                  <div className="flex items-center gap-4 text-sm pt-2">
+                    <span className="flex items-center gap-1">
+                      <User className="h-4 w-4" />
+                      {selectedArticle.author || 'Unknown'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" />
+                      {getTimeAgo(selectedArticle.time_published)}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={getSentimentColor(selectedArticle.sentiment)}
+                    >
+                      {getSentimentIcon(selectedArticle.sentiment)}
+                      <span className="ml-1 capitalize">{selectedArticle.sentiment}</span>
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    {getTimeAgo(selectedArticle.time_published)}
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={getSentimentColor(selectedArticle.sentiment)}
-                  >
-                    {getSentimentIcon(selectedArticle.sentiment)}
-                    <span className="ml-1 capitalize">{selectedArticle.sentiment}</span>
-                  </Badge>
                 </DialogDescription>
               </DialogHeader>
 
@@ -178,7 +204,7 @@ export function NewsFeed() {
         </CardHeader>
         <CardContent>
           {/* Category Tabs */}
-          <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-6">
+          <Tabs value={selectedCategory} onValueChange={handleCategoryChange} className="mb-6">
             <TabsList className="flex flex-wrap h-auto gap-2 bg-transparent">
               {categories.map(category => (
                 <TabsTrigger key={category} value={category} className="capitalize">
@@ -190,12 +216,12 @@ export function NewsFeed() {
 
           {/* News Articles - Blog Style */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredNews.length === 0 ? (
+            {displayedNews.length === 0 ? (
               <div className="col-span-2 text-center py-12 text-muted-foreground">
                 No news articles found for this category
               </div>
             ) : (
-              filteredNews.map((article, index) => (
+              displayedNews.map((article, index) => (
                 <Card
                   key={index}
                   className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
@@ -272,15 +298,15 @@ export function NewsFeed() {
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground">Total Articles</div>
-                <div className="text-2xl font-bold">{filteredNews.length}</div>
+                <div className="text-sm text-muted-foreground">Current Page</div>
+                <div className="text-2xl font-bold">{currentPage}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Positive Sentiment</div>
                 <div className="text-2xl font-bold text-green-600">
-                  {filteredNews.filter(a => a.sentiment === 'positive').length}
+                  {allNews.filter(a => a.sentiment === 'positive').length}
                 </div>
               </CardContent>
             </Card>
@@ -288,10 +314,33 @@ export function NewsFeed() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground">Negative Sentiment</div>
                 <div className="text-2xl font-bold text-red-600">
-                  {filteredNews.filter(a => a.sentiment === 'negative').length}
+                  {allNews.filter(a => a.sentiment === 'negative').length}
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              onClick={handleNextPage}
+              disabled={currentPage >= totalPages}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
           </div>
         </CardContent>
       </Card>

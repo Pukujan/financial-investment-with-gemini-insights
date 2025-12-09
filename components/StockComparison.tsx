@@ -21,7 +21,6 @@ import {
 } from './ui/select';
 import { Skeleton } from './ui/skeleton';
 import { type StockQuote } from '../services/financialApi';
-import { mockStocks } from '../data/mockData';
 import { useData } from '../contexts/DataContext';
 
 type SortField = 'symbol' | 'price' | 'change' | 'changePercent' | 'volume' | 'marketCap';
@@ -41,14 +40,13 @@ export function StockComparison() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [performanceFilter, setPerformanceFilter] = useState<'all' | 'gainers' | 'losers'>('all');
 
-  // Combine stocks with mock data for additional fields
+  // Enrich stocks with fallback data
   const enrichedStocks: ExtendedStockQuote[] = contextStocks.map(stock => {
-    const mockData = mockStocks.find(s => s.symbol === stock.symbol);
     return {
       ...stock,
-      name: mockData?.name || stock.symbol,
-      marketCap: mockData?.marketCap || 'N/A',
-      pe: mockData?.pe || 0,
+      name: stock.name || stock.symbol,
+      marketCap: 'N/A',
+      pe: 0,
     };
   });
 

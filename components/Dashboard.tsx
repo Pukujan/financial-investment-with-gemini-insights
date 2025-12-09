@@ -1,17 +1,25 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Activity, Search, Sparkles } from 'lucide-react';
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Activity,
+  Search,
+  Sparkles,
+  Filter,
+  X,
+} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Skeleton } from './ui/skeleton';
 import { Badge } from './ui/badge';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { getTimeSeriesDaily } from '../services/financialApi';
+import { getTimeSeriesDaily, getStockSectorInfo } from '../services/financialApi';
 import { getCachedStockPrediction, StockPrediction } from '../services/stockPredictionCache';
-import { mockStocks } from '../data/mockData';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useData } from '../contexts/DataContext';
 import { usePortfolio } from '../contexts/PortfolioContext';
+import { clearNewsCache } from '../services/newsCache';
 
 type ChartRange = '30d' | '7d' | '3d';
 
@@ -27,6 +35,8 @@ export function Dashboard() {
   const [chartRange, setChartRange] = useState<ChartRange>('30d');
   const [prediction, setPrediction] = useState<StockPrediction | null>(null);
   const [loadingPrediction, setLoadingPrediction] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const chartRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,7 +56,7 @@ export function Dashboard() {
     setPrediction(null); // Reset prediction when changing stocks
     try {
       const timeSeries = await getTimeSeriesDaily(symbol);
-      const formattedData = timeSeries.map(item => ({
+      const formattedData = timeSeries.map((item) => ({
         date: new Date(item.timestamp).toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
@@ -58,7 +68,7 @@ export function Dashboard() {
       console.error('Error loading chart data:', error);
       // Generate mock chart data (30 points)
       const mockData = Array.from({ length: 30 }, (_, i) => {
-        const stock = stocks.find(s => s.symbol === symbol);
+        const stock = stocks.find((s) => s.symbol === symbol);
         const basePrice = stock?.price || 100;
         const variation = (Math.random() - 0.5) * basePrice * 0.1;
         return {
@@ -88,6 +98,18 @@ export function Dashboard() {
     }
   };
 
+  const handleClearNewsCache = async () => {
+    try {
+      setClearingCache(true);
+      await clearNewsCache();
+      console.log('✓ News cache cleared (Firestore + localStorage)');
+    } catch (error) {
+      console.error('Error clearing news cache:', error);
+    } finally {
+      setClearingCache(false);
+    }
+  };
+
   // Slice base chart data according to selected range
   const getDisplayChartData = () => {
     if (!chartData || chartData.length === 0) return [];
@@ -105,35 +127,37 @@ export function Dashboard() {
 
   const displayChartData = getDisplayChartData();
 
-  // Combine stocks with mock data for additional fields
-  const enrichedStocks = stocks.map(stock => {
-    const mockData = mockStocks.find(s => s.symbol === stock.symbol);
+  // Enrich stocks with sector information from hardcoded mapping
+  const enrichedStocks = stocks.map((stock) => {
+    const sectorInfo = getStockSectorInfo(stock.symbol);
     return {
       ...stock,
-      name: mockData?.name || stock.symbol,
-      marketCap: mockData?.marketCap || 'N/A',
-      pe: mockData?.pe || 0,
-      sector: mockData?.sector || 'Other',
+      name: stock.name || sectorInfo.name,
+      marketCap: 'N/A',
+      pe: 0,
+      sector: sectorInfo.sector,
+      industry: sectorInfo.industry,
     };
   });
 
   // Filter stocks by sector and search query
   const filteredStocks = enrichedStocks
-    .filter(stock => selectedSector === 'all' || stock.sector === selectedSector)
-    .filter(stock =>
-      searchQuery === '' ||
-      stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      stock.name.toLowerCase().includes(searchQuery.toLowerCase())
+    .filter((stock) => selectedSector === 'all' || stock.sector === selectedSector)
+    .filter(
+      (stock) =>
+        searchQuery === '' ||
+        stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stock.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
   // Get unique sectors
-  const sectors = ['all', ...Array.from(new Set(enrichedStocks.map(s => s.sector))).sort()];
+  const sectors = ['all', ...Array.from(new Set(enrichedStocks.map((s) => s.sector))).sort()];
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <Card key={i}>
               <CardContent className="pt-6">
                 <Skeleton className="h-20 w-full" />
@@ -189,7 +213,7 @@ export function Dashboard() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stocks.length}</div>
+            <div className="text-2xl font-bold">84</div>
             <p className="text-xs text-muted-foreground mt-2">Across Tech & Finance</p>
           </CardContent>
         </Card>
@@ -197,9 +221,22 @@ export function Dashboard() {
 
       {/* Stock Cards & Inline Chart */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Market Overview</h2>
-          <div className="relative w-64">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold">Market Overview</h2>
+
+            {/* Dev-only button to clear all news cache */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearNewsCache}
+              disabled={clearingCache}
+            >
+              {clearingCache ? 'Clearing cache...' : 'Clear News Cache'}
+            </Button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
@@ -211,16 +248,43 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Sector Filter Tabs */}
-        <Tabs value={selectedSector} onValueChange={setSelectedSector} className="mb-6">
-          <TabsList className="flex flex-wrap h-auto gap-2 bg-transparent">
-            {sectors.map(sector => (
-              <TabsTrigger key={sector} value={sector} className="capitalize">
-                {sector}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* Sector Filter Buttons */}
+        <div className="flex gap-2 mb-6">
+          <Button
+            variant={selectedSector === 'all' ? 'default' : 'outline'}
+            onClick={() => setSelectedSector('all')}
+            size="sm"
+          >
+            All
+          </Button>
+
+          {!showCategories ? (
+            <Button variant="outline" onClick={() => setShowCategories(true)} size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Categories
+            </Button>
+          ) : (
+            <div className="flex flex-wrap gap-2 items-center">
+              <Button variant="outline" onClick={() => setShowCategories(false)} size="sm">
+                <X className="h-4 w-4 mr-2" />
+                Close
+              </Button>
+              {sectors
+                .filter((s) => s !== 'all')
+                .map((sector) => (
+                  <Button
+                    key={sector}
+                    variant={selectedSector === sector ? 'default' : 'outline'}
+                    onClick={() => setSelectedSector(sector)}
+                    size="sm"
+                    className="capitalize"
+                  >
+                    {sector}
+                  </Button>
+                ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {filteredStocks.map((stock) => (
@@ -239,11 +303,7 @@ export function Dashboard() {
                       <div className="inline-flex rounded-md border bg-muted p-1 text-xs">
                         {(['30d', '7d', '3d'] as ChartRange[]).map((range) => {
                           const label =
-                            range === '30d'
-                              ? '30D'
-                              : range === '7d'
-                                ? '7D'
-                                : '3D';
+                            range === '30d' ? '30D' : range === '7d' ? '7D' : '3D';
 
                           const isActive = chartRange === range;
 
@@ -292,7 +352,9 @@ export function Dashboard() {
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
                                 <Sparkles className="w-5 h-5 text-purple-600" />
-                                <h3 className="font-semibold">AI Next Week Prediction</h3>
+                                <h3 className="font-semibold">
+                                  AI Next Week Prediction
+                                </h3>
                               </div>
                               <Button
                                 size="sm"
@@ -328,7 +390,11 @@ export function Dashboard() {
                                     </div>
                                     <div className="flex items-center gap-2 mt-2">
                                       <Badge
-                                        variant={prediction.priceChange >= 0 ? 'default' : 'destructive'}
+                                        variant={
+                                          prediction.priceChange >= 0
+                                            ? 'default'
+                                            : 'destructive'
+                                        }
                                         className="text-xs"
                                       >
                                         {prediction.priceChange >= 0 ? '+' : ''}
@@ -354,7 +420,10 @@ export function Dashboard() {
                                     </p>
                                     <div className="space-y-1">
                                       {prediction.factors.map((factor, i) => (
-                                        <div key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                                        <div
+                                          key={i}
+                                          className="flex items-start gap-2 text-xs text-slate-600"
+                                        >
                                           <span className="text-purple-600">•</span>
                                           <span>{factor}</span>
                                         </div>
@@ -367,7 +436,8 @@ export function Dashboard() {
 
                             {!prediction && !loadingPrediction && (
                               <div className="text-center py-8 text-sm text-muted-foreground">
-                                Click "Get Prediction" to see AI-powered price forecast for next week
+                                Click &quot;Get Prediction&quot; to see AI-powered price
+                                forecast for next week
                               </div>
                             )}
                           </div>
@@ -394,7 +464,9 @@ export function Dashboard() {
                       <CardTitle className="text-lg">{stock.symbol}</CardTitle>
                       <CardDescription className="text-xs">{stock.name}</CardDescription>
                     </div>
-                    <Badge variant={stock.change >= 0 ? 'default' : 'destructive'}>
+                    <Badge
+                      variant={stock.change >= 0 ? 'default' : 'destructive'}
+                    >
                       {stock.change >= 0 ? '+' : ''}
                       {stock.changePercent.toFixed(2)}%
                     </Badge>
