@@ -1,6 +1,6 @@
 # InvestAI Financial App (Product Demo)
 
-!!Important Yahoo API and AI API facing issue, need to fix asap (review date 4/24/26 Pujan)
+## !!Important Yahoo API and AI API facing issue, need to fix asap (review date 4/24/26 Pujan)
 
 A modern financial dashboard application built with React, TypeScript, and Vite. Track stocks in real-time, manage your portfolio, get AI-powered insights, and stay updated with the latest financial news.
 
