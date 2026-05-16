@@ -1,0 +1,15 @@
+{
+  "id": "news-market",
+  "description": "General market news scrape",
+  "kind": "news",
+  "input": {
+    "newsTopics": ["US equities", "Federal Reserve", "technology earnings"]
+  },
+  "expected": {
+    "news": {
+      "minArticles": 2,
+      "requiredFields": ["title", "summary", "source", "sentiment", "time_published"],
+      "titleContains": "market"
+    }
+  }
+}

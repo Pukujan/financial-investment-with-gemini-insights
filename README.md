@@ -28,7 +28,7 @@ https://water-matrix-96907145.figma.site
 - Watchlist functionality with price alerts
 
 ### 🤖 AI-Powered Insights
-- Market sentiment analysis powered by Google Gemini AI
+- Market sentiment analysis powered by OpenRouter AI (Llama + Qwen)
 - Personalized stock recommendations
 - Portfolio diversification analysis
 - Risk assessment and growth predictions
@@ -45,15 +45,15 @@ https://water-matrix-96907145.figma.site
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Google Gemini API key ([Get it here](https://aistudio.google.com/app/apikey))
-- Firebase project ([Create one here](https://console.firebase.google.com/))
+- OpenRouter API key ([Get it here](https://openrouter.ai/keys))
+- Firebase project ([Create one here](https://console.firebase.google.com/)) — optional
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
    git clone <your-repo-url>
-   cd figma-prototype
+   cd financial-investment-with-gemini-insights
    ```
 
 2. **Install dependencies**
@@ -63,61 +63,57 @@ https://water-matrix-96907145.figma.site
 
 3. **Set up environment variables**
    
-   Create a `.env` file in the root directory:
+   Copy `.env.example` to `.env` at the repo root (server-side secrets only):
    ```env
-   # Gemini API Key
-   VITE_GEMINI_API_KEY=your_gemini_api_key_here
-
-   # Firebase Configuration
-   VITE_FIREBASE_API_KEY=your_firebase_api_key_here
-   VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-   VITE_FIREBASE_APP_ID=your_app_id
-   
-   # App Instance ID (for shared Firestore databases)
-   VITE_FIREBASE_APP_INSTANCE_ID=financial-app
+   OPENROUTER_API_KEY=sk-or-v1-your_key_here
+   OPENROUTER_MODEL_PRIMARY=deepseek/deepseek-chat-v3-0324
+   OPENROUTER_MODEL_FALLBACK=qwen/qwen3.5-flash-02-23
+   FIREBASE_API_KEY=...
+   FIREBASE_PROJECT_ID=...
+   FIREBASE_APP_INSTANCE_ID=financial-app
    ```
 
 4. **Enable Firestore Database**
    
-   Follow the instructions in [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) to:
-   - Create a Firebase project
-   - Enable Firestore Database
-   - Get your configuration credentials
+   Follow [FIREBASE_SETUP.md](./FIREBASE_SETUP.md).
 
-5. **Start the development server**
+5. **Start backend + frontend**
    ```bash
    npm run dev
    ```
+   - API: `http://localhost:3001/api/health`
+   - UI: `http://localhost:5173`
 
-6. **Open your browser**
-   
-   Navigate to `http://localhost:5173`
+6. **Run tests**
+   ```bash
+   npm test
+   ```
 
-## 🏗️ Project Structure
+## Documentation
+
+- [AGENTS.md](./AGENTS.md) — **fast orientation for humans & coding agents**
+- [Codebase map](./docs/CODEBASE_MAP.md) — file-by-file index
+- [Architecture guide](./docs/ARCHITECTURE.md) — system design + MVC
+- [Feature modules](./docs/FEATURE_MODULES.md) — how to add/split modules
+
+## 🏗️ Project Structure (Modular Monolith)
 
 ```
-figma-prototype/
-├── components/           # React components
-│   ├── ui/              # shadcn/ui components (Button, Card, Dialog, etc.)
-│   ├── Dashboard.tsx    # Main dashboard with stock charts
-│   ├── Portfolio.tsx    # Portfolio management page
-│   ├── AIInsights.tsx   # AI-powered insights page
-│   ├── News.tsx         # Financial news page
-│   └── StockChart.tsx   # Stock chart component
-├── contexts/            # React Context providers
-│   ├── DataContext.tsx  # Stock data management
-│   └── PortfolioContext.tsx  # Portfolio state management
-├── services/            # External service integrations
-│   └── aiService.ts     # Google Gemini AI integration
-├── config/              # Configuration files
-│   └── firebase.ts      # Firebase initialization
-├── data/                # Static data
-│   └── mockData.ts      # Stock and news data
-├── styles/              # Global styles
-│   └── globals.css      # Tailwind CSS styles
+├── apps/
+│   ├── frontend/          # React + Vite UI
+│   │   ├── api/           # HTTP client
+│   │   ├── components/
+│   │   └── contexts/
+│   └── backend/           # Express API (MVC)
+│       └── src/
+│           ├── modules/   # market | ai | portfolio | health
+│           │   ├── controllers/
+│           │   ├── services/
+│           │   └── routes/
+│           └── utils/
+├── packages/
+│   └── shared/            # Shared TypeScript types
+├── styles/                # (legacy path if present)
 ├── .env                 # Environment variables (not committed)
 ├── .env.example         # Example environment variables
 └── App.tsx              # Main application component
@@ -132,7 +128,7 @@ figma-prototype/
 - **Charts**: Recharts
 - **Icons**: Lucide React
 - **Stock Data**: Yahoo Finance API (via CORS proxy)
-- **AI Insights**: Google Gemini 1.5 Flash API
+- **AI Insights**: OpenRouter (Llama 3.3 70B free → Qwen3 8B free fallback)
 - **Database**: Firebase Firestore
 - **Deployment**: Vercel-ready
 
@@ -154,10 +150,11 @@ npm run lint
 
 ## 🔑 API Keys & Configuration
 
-### Google Gemini API
-- Free tier: 1,500 requests/day
-- Get your API key: https://aistudio.google.com/app/apikey
-- Add to `.env` as `VITE_GEMINI_API_KEY`
+### OpenRouter API
+- Primary model: `deepseek/deepseek-chat-v3-0324` (DeepSeek V3)
+- Fallback: `qwen/qwen3.5-flash-02-23` (Qwen 3.5 Flash)
+- Get your API key: https://openrouter.ai/keys
+- Add to root `.env` as `OPENROUTER_API_KEY`
 
 ### Firebase Firestore
 - Free tier: 50K reads, 20K writes per day
@@ -191,7 +188,7 @@ npm run lint
 3. **Add Environment Variables**
    
    In Vercel project settings, add all variables from your `.env` file:
-   - `VITE_GEMINI_API_KEY`
+   - `OPENROUTER_API_KEY`
    - `VITE_FIREBASE_API_KEY`
    - `VITE_FIREBASE_AUTH_DOMAIN`
    - `VITE_FIREBASE_PROJECT_ID`
@@ -240,7 +237,7 @@ This project is licensed under the MIT License.
 ## 🙏 Acknowledgments
 
 - [Yahoo Finance](https://finance.yahoo.com/) for stock data
-- [Google Gemini](https://ai.google.dev/) for AI insights
+- [OpenRouter](https://openrouter.ai/) for AI insights
 - [Firebase](https://firebase.google.com/) for database
 - [shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
 - [Recharts](https://recharts.org/) for data visualization
