@@ -1,0 +1,28 @@
+{
+  "id": "quotes-core",
+  "description": "Core large-cap quotes — price bands from catalog reference (May 2026 demo)",
+  "kind": "quotes",
+  "input": {
+    "symbols": ["AAPL", "MSFT", "GOOGL"]
+  },
+  "expected": {
+    "minQuoteCount": 3,
+    "quotes": [
+      {
+        "symbol": "AAPL",
+        "price": { "min": 120, "max": 220 },
+        "requiredFields": ["symbol", "price", "change", "changePercent", "high", "low", "open", "previousClose", "volume"]
+      },
+      {
+        "symbol": "MSFT",
+        "price": { "min": 280, "max": 450 },
+        "requiredFields": ["symbol", "price", "change", "changePercent", "high", "low", "open", "previousClose", "volume"]
+      },
+      {
+        "symbol": "GOOGL",
+        "price": { "min": 100, "max": 180 },
+        "requiredFields": ["symbol", "price", "change", "changePercent", "high", "low", "open", "previousClose", "volume"]
+      }
+    ]
+  }
+}

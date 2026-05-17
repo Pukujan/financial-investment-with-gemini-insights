@@ -1,0 +1,23 @@
+{
+  "id": "quotes-finance",
+  "description": "Financial sector symbols",
+  "kind": "quotes",
+  "input": {
+    "symbols": ["JPM", "V"]
+  },
+  "expected": {
+    "minQuoteCount": 2,
+    "quotes": [
+      {
+        "symbol": "JPM",
+        "price": { "min": 140, "max": 220 },
+        "requiredFields": ["symbol", "price", "change", "changePercent", "volume"]
+      },
+      {
+        "symbol": "V",
+        "price": { "min": 200, "max": 320 },
+        "requiredFields": ["symbol", "price", "change", "changePercent", "volume"]
+      }
+    ]
+  }
+}

@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Agent eval history (local dev persistence)
+apps/backend/.data/
+
 # Environment variables
 .env
 .env.local
