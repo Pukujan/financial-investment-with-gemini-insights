@@ -5,9 +5,13 @@ export function sendSuccess<T>(
   res: Response,
   data: T,
   status = 200,
-  meta?: Record<string, unknown>
+  meta?: Record<string, unknown> | object
 ): void {
-  const body: ApiResponse<T> = { success: true, data, ...(meta ? { meta } : {}) };
+  const body: ApiResponse<T> = {
+    success: true,
+    data,
+    ...(meta ? { meta: meta as Record<string, unknown> } : {}),
+  };
   res.status(status).json(body);
 }
 

@@ -7,7 +7,7 @@ type TimestampField = 'lastUpdated' | 'createdAt';
  * Read a Firestore document if younger than ttlMs.
  * Returns null if Firestore unavailable, doc missing, or expired.
  */
-export async function readFirestoreCache<T extends Record<string, unknown>>(
+export async function readFirestoreCache<T extends object>(
   collection: string,
   docId: string,
   ttlMs: number,

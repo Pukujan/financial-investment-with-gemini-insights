@@ -15,13 +15,11 @@ Exactly 30 daily bars, oldest to newest. OHLC must be numbers.`;
 
 const EMPTY_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
-function formatVolume(vol: unknown): string {
-  if (typeof vol === 'string') return vol;
+function parseVolume(vol: unknown): number {
+  if (typeof vol === 'number' && Number.isFinite(vol) && vol > 0) return vol;
   const n = Number(vol);
-  if (!Number.isFinite(n) || n <= 0) return '1M';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-  return String(Math.round(n));
+  if (Number.isFinite(n) && n > 0) return n;
+  return 1_000_000;
 }
 
 function normalizePoint(raw: Record<string, unknown>): TimeSeriesData | null {
@@ -35,7 +33,7 @@ function normalizePoint(raw: Record<string, unknown>): TimeSeriesData | null {
     high: Number(raw.high) > 0 ? Number(raw.high) : close * 1.01,
     low: Number(raw.low) > 0 ? Number(raw.low) : close * 0.99,
     close,
-    volume: formatVolume(raw.volume),
+    volume: parseVolume(raw.volume),
   };
 }
 
@@ -53,7 +51,7 @@ function barRowToPoint(row: unknown): TimeSeriesData | null {
     high: Number.isFinite(high) && high > 0 ? high : close * 1.01,
     low: Number.isFinite(low) && low > 0 ? low : close * 0.99,
     close,
-    volume: row.length > 5 ? formatVolume(row[5]) : '1M',
+    volume: row.length > 5 ? parseVolume(row[5]) : 1_000_000,
   };
 }
 

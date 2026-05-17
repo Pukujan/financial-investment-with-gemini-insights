@@ -32,17 +32,20 @@ Use realistic headline style. url can be "#" if unknown.`;
     throw new Error('Agent response missing articles array');
   }
 
-  const articles = parsed.articles.slice(0, limit).map((a, i) => ({
-    title: a.title ?? `Market update ${i + 1}`,
-    url: a.url ?? '#',
-    summary: a.summary ?? '',
-    source: a.source ?? 'Agent scrape',
-    category: a.category ?? 'market',
-    sentiment:
-      a.sentiment === 'positive' || a.sentiment === 'negative' ? a.sentiment : 'neutral',
-    time_published: a.time_published ?? new Date().toISOString(),
-    ticker_sentiment: Array.isArray(a.ticker_sentiment) ? a.ticker_sentiment : [],
-  }));
+  const articles: NewsArticle[] = parsed.articles.slice(0, limit).map((a, i) => {
+    const sentiment: NewsArticle['sentiment'] =
+      a.sentiment === 'positive' || a.sentiment === 'negative' ? a.sentiment : 'neutral';
+    return {
+      title: a.title ?? `Market update ${i + 1}`,
+      url: a.url ?? '#',
+      summary: a.summary ?? '',
+      source: a.source ?? 'Agent scrape',
+      category: a.category ?? 'market',
+      sentiment,
+      time_published: a.time_published ?? new Date().toISOString(),
+      ticker_sentiment: Array.isArray(a.ticker_sentiment) ? a.ticker_sentiment : [],
+    };
+  });
 
   return { articles, usage, model: usedModel };
 }
