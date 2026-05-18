@@ -20,24 +20,23 @@
 Open `.env` file in the root directory and replace the placeholder values with your actual Firebase credentials:
 
 ```env
-# Firebase Configuration
-VITE_FIREBASE_API_KEY=your_actual_api_key_here
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-VITE_FIREBASE_APP_ID=1:123456789:web:abcdef123456
+# Backend only (root .env) — never expose in frontend
+FIREBASE_API_KEY=your_actual_api_key_here
+FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+FIREBASE_MESSAGING_SENDER_ID=123456789
+FIREBASE_APP_ID=1:123456789:web:abcdef123456
+FIREBASE_APP_INSTANCE_ID=financial-app
 
-# Gemini API Key
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-
-# App Instance ID (unique identifier for this app in shared Firestore)
-VITE_FIREBASE_APP_INSTANCE_ID=financial-app
+OPENROUTER_API_KEY=sk-or-v1-your_key_here
+OPENROUTER_MODEL_PRIMARY=deepseek/deepseek-chat-v3-0324
+OPENROUTER_MODEL_FALLBACK=qwen/qwen3.5-flash-02-23
 ```
 
 **Note:** 
 - Never commit your `.env` file to version control. It's already in `.gitignore`.
-- The `VITE_FIREBASE_APP_INSTANCE_ID` creates a separate collection (`portfolios_financial-app`) in Firestore, allowing you to use the same database for multiple projects without conflicts.
+- Firestore is accessed from `apps/backend` only. `FIREBASE_APP_INSTANCE_ID` namespaces collections (e.g. `portfolios_financial-app`).
 
 ## 4. Enable Firestore Database
 
