@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install --include=dev",
+  "installCommand": "NPM_CONFIG_PRODUCTION=false npm install",
   "buildCommand": "npm run build -w @investai/shared && npm run build -w @investai/frontend",
   "outputDirectory": "apps/frontend/dist",
   "framework": null,
