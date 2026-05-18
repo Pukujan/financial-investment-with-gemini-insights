@@ -17,6 +17,7 @@ export type {
   HealthStatus,
   MarketDataMode,
   MarketDataSettings,
+  QuoteDataMode,
   MarketLiveProvider,
   MarketAgentProvider,
   MarketProvider,
@@ -76,3 +77,41 @@ export type {
   AgentChartEvalSummary,
   AgentChartSymbolEval,
 } from './chartEval.js';
+
+export type { ChartDayComparison, ChartPriceConvention } from './tradingDays.js';
+
+export {
+  CHART_EOD_CONVENTION,
+  buildDailyVsLive,
+  buildEodSeriesFromQuote,
+  lastTradingDayKeys,
+  pctDiff,
+} from './tradingDays.js';
+
+export {
+  PROMPT_EVAL_WINDOW_DAYS,
+} from './promptEval.js';
+
+export type { AiUsageLimitStatus, AiUsageLimitsOverview, AiUsageTier } from './aiUsageLimit.js';
+
+export type {
+  AiUsageLimitsStatus,
+  UsageLimitScope,
+  PromptEvalComparisonMode,
+  PromptEvalCooldownStatus,
+  PromptEvalExperiment,
+  PromptEvalGoldenSymbol,
+  PromptEvalHistory,
+  PromptEvalImprovement,
+  PromptEvalJob,
+  PromptEvalJobSetupStep,
+  PromptEvalJobStatus,
+  PromptEvalJobTierStep,
+  PromptEvalRagMeta,
+  PromptEvalStepStatus,
+  PromptEvalTestResult,
+  PromptEvalTestSummary,
+  PromptEvalTierResult,
+  PromptEvalTierSymbol,
+  RagRetrievalLog,
+} from './promptEval.js';

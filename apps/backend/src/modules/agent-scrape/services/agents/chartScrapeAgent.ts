@@ -1,4 +1,5 @@
 import type { TimeSeriesData } from '@investai/shared';
+import { lastTradingDayKeys } from '@investai/shared';
 import { env } from '../../../../config/env.js';
 import {
   callAiWithUsageFallback,
@@ -115,6 +116,22 @@ function parseChartPayload(
   return points;
 }
 
+const TRADING_DAY_KEYS = () => lastTradingDayKeys(30);
+
+function alignSeriesToTradingDays(
+  points: TimeSeriesData[],
+  dates: string[] = TRADING_DAY_KEYS()
+): TimeSeriesData[] {
+  const byDate = new Map(points.map(p => [p.timestamp.split('T')[0]!, p]));
+  const aligned: TimeSeriesData[] = [];
+  for (const d of dates) {
+    const p = byDate.get(d);
+    if (p) aligned.push({ ...p, timestamp: d });
+  }
+  if (aligned.length >= 10) return aligned;
+  return points.slice(-30);
+}
+
 async function scrapeChartSymbol(
   symbol: string,
   anchorPrice: number | undefined,
@@ -126,7 +143,9 @@ async function scrapeChartSymbol(
       ? ` Last close near $${anchorPrice.toFixed(2)}.`
       : '';
 
-  const prompt = `Generate 30 consecutive US equity trading days of OHLC for ${sym}.${anchor}`;
+  const dates = TRADING_DAY_KEYS();
+  const dateList = dates.join(', ');
+  const prompt = `Generate daily OHLC for ${sym} on exactly these US equity session dates (oldest to newest): ${dateList}. Use each date as YYYY-MM-DD in the bars array.${anchor}`;
 
   const { text, usage } = await callAiWithUsageFallback(
     prompt,
@@ -136,7 +155,8 @@ async function scrapeChartSymbol(
     env.agentScrapeBatchTimeoutMs
   );
 
-  return { series: parseChartPayload(text, sym), usage };
+  const raw = parseChartPayload(text, sym);
+  return { series: alignSeriesToTradingDays(raw, dates), usage };
 }
 
 export async function scrapeChartsWithAgent(

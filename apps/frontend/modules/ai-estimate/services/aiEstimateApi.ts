@@ -8,9 +8,12 @@ export const aiEstimateApi = {
       '/api/ai-estimate/tiers'
     ),
 
-  getAgentScrapeEstimate: (options?: { scrapeCharts?: boolean }) => {
-    const params = options?.scrapeCharts ? '?scrapeCharts=1' : '';
-    return http<AgentScrapeEstimate>(`/api/ai-estimate/agent-scrape${params}`);
+  getAgentScrapeEstimate: (options?: { scrapeCharts?: boolean; chartsOnly?: boolean }) => {
+    const q = new URLSearchParams();
+    if (options?.scrapeCharts !== false) q.set('scrapeCharts', '1');
+    if (options?.chartsOnly !== false) q.set('chartsOnly', '1');
+    const qs = q.toString();
+    return http<AgentScrapeEstimate>(`/api/ai-estimate/agent-scrape${qs ? `?${qs}` : ''}`);
   },
 };
 

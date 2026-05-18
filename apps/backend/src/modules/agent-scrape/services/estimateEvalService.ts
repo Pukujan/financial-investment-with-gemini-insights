@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type {
@@ -12,54 +11,28 @@ import {
   buildEstimateEvalFromJob,
   summarizeEstimateEvals,
 } from '@investai/shared';
+import { firestoreCollections } from '../../../config/cache.js';
+import {
+  loadEvalFromAllSources,
+  mergeEvalById,
+  persistEvalTriple,
+} from '../../../utils/evalPersistence.js';
+import { loadEvalHistoryFromDisk } from '../../../utils/evalDiskStore.js';
 
 const MAX_HISTORY = 50;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HISTORY_FILE = path.resolve(__dirname, '../../../../.data/estimate-eval-history.json');
 
-const history: AgentEstimateEvalRecord[] = loadHistoryFromDisk();
-
-function loadHistoryFromDisk(): AgentEstimateEvalRecord[] {
-  try {
-    if (!fs.existsSync(HISTORY_FILE)) return [];
-    const raw = fs.readFileSync(HISTORY_FILE, 'utf8');
-    const parsed = JSON.parse(raw) as AgentEstimateEvalRecord[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(r => r && typeof r.jobId === 'string')
-      .sort(
-        (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
-      )
-      .slice(0, MAX_HISTORY);
-  } catch {
-    return [];
-  }
-}
-
-function persistHistoryToDisk(): void {
-  try {
-    const dir = path.dirname(HISTORY_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
-  } catch (err) {
-    console.warn('[estimate-eval] Could not persist history to disk:', err);
-  }
-}
+const history: AgentEstimateEvalRecord[] = loadEvalHistoryFromDisk(
+  HISTORY_FILE,
+  (item): item is AgentEstimateEvalRecord =>
+    Boolean(item && typeof item === 'object' && typeof (item as AgentEstimateEvalRecord).jobId === 'string')
+);
 
 export function mergeEstimateEvalRecords(
   ...groups: AgentEstimateEvalRecord[][]
 ): AgentEstimateEvalHistory {
-  const byId = new Map<string, AgentEstimateEvalRecord>();
-  for (const group of groups) {
-    for (const record of group) {
-      byId.set(record.jobId, record);
-    }
-  }
-  const records = [...byId.values()]
-    .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
-    .slice(0, MAX_HISTORY);
+  const records = mergeEvalById(r => r.jobId, MAX_HISTORY, ...groups);
   return {
     records,
     summary: summarizeEstimateEvals(records),
@@ -70,16 +43,39 @@ export function buildEstimateEval(job: AgentScrapeJob): AgentEstimateEvalRecord 
   return buildEstimateEvalFromJob(job);
 }
 
-export function recordEstimateEval(record: AgentEstimateEvalRecord): void {
-  const idx = history.findIndex(r => r.jobId === record.jobId);
-  if (idx >= 0) history[idx] = record;
-  else history.unshift(record);
-  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
-  persistHistoryToDisk();
+export async function recordEstimateEval(record: AgentEstimateEvalRecord): Promise<void> {
+  await persistEvalTriple({
+    collection: firestoreCollections.estimateEval,
+    docId: record.jobId,
+    record,
+    memory: history,
+    diskPath: HISTORY_FILE,
+    maxHistory: MAX_HISTORY,
+    getId: r => r.jobId,
+  });
 }
 
-export function getEstimateEvalHistory(): AgentEstimateEvalHistory {
-  return mergeEstimateEvalRecords([...history]);
+export async function getEstimateEvalHistory(): Promise<AgentEstimateEvalHistory> {
+  const { records } = await loadEvalFromAllSources({
+    collection: firestoreCollections.estimateEval,
+    memory: history,
+    diskPath: HISTORY_FILE,
+    maxRecords: MAX_HISTORY,
+    getId: r => r.jobId,
+    validate: (item): item is AgentEstimateEvalRecord =>
+      Boolean(item && typeof item === 'object' && typeof (item as AgentEstimateEvalRecord).jobId === 'string'),
+  });
+  return mergeEstimateEvalRecords(records);
+}
+
+export async function syncEstimateEvalFromClient(
+  records: AgentEstimateEvalRecord[]
+): Promise<AgentEstimateEvalHistory> {
+  for (const record of records) {
+    if (!record?.jobId) continue;
+    await recordEstimateEval(record);
+  }
+  return getEstimateEvalHistory();
 }
 
 export function snapshotFromTierEstimate(

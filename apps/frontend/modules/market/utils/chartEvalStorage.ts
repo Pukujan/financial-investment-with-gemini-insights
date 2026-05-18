@@ -1,4 +1,5 @@
 import type { AgentChartEvalHistory, AgentChartEvalRecord } from '@investai/shared';
+import { loadAgentQueuePrefs } from './agentQueueStorage';
 
 const STORAGE_KEY = 'investai-chart-eval-v1';
 const MAX_LOCAL = 50;
@@ -26,6 +27,21 @@ export function persistChartEvalRecord(record: AgentChartEvalRecord): void {
   } catch {
     /* quota */
   }
+}
+
+/** Dedicated storage + last completed job snapshot. */
+export function collectAllLocalChartEvals(): AgentChartEvalRecord[] {
+  const byId = new Map<string, AgentChartEvalRecord>();
+  for (const r of loadLocalChartEvals()) {
+    byId.set(r.jobId, r);
+  }
+  const lastJob = loadAgentQueuePrefs().lastJob;
+  if (lastJob?.chartEval) {
+    byId.set(lastJob.chartEval.jobId, lastJob.chartEval);
+  }
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+  );
 }
 
 export function mergeChartEvalHistory(

@@ -8,6 +8,7 @@ import {
   Link2,
   Gauge,
   LineChart,
+  FlaskConical,
 } from 'lucide-react';
 import {
   MarketDataProvider,
@@ -16,7 +17,12 @@ import {
   AgentScrapeQueueFloat,
   type AppViewId,
 } from '@/modules/market';
-import { ChartEvalDashboard, DataSourcesView, EstimateEvalDashboard } from '@/modules/market';
+import {
+  ChartEvalDashboard,
+  DataSourcesView,
+  EstimateEvalDashboard,
+  PromptEvalDashboard,
+} from '@/modules/market';
 import { AIInsightsProvider } from '@/modules/ai-insights';
 import { PortfolioProvider } from '@/modules/portfolio';
 import { Dashboard } from '@/modules/dashboard';
@@ -24,6 +30,9 @@ import { StockComparison } from '@/modules/stock-comparison';
 import { NewsFeed } from '@/modules/news';
 import { AIInsights } from '@/modules/ai-insights';
 import { Portfolio } from '@/modules/portfolio';
+import { AuthProvider, useAuth } from '@/modules/auth';
+import { PromptEvalRunProvider } from '@/modules/market/controllers/PromptEvalRunProvider';
+import { Button } from '@/components/ui/button';
 
 type View = AppViewId;
 
@@ -34,10 +43,13 @@ function AppContent({
   currentView: View;
   setCurrentView: (view: View) => void;
 }) {
-  const { lastUpdated, dataMode } = useMarketData();
+  const { lastUpdated, dataMode, liveProvider } = useMarketData();
+  const { loginAvailable, authenticated, logout, requestLogin } = useAuth();
   const liveLabel =
     dataMode === 'live'
-      ? 'Live (Tiingo)'
+      ? liveProvider === 'yahoo'
+        ? 'Live (Yahoo)'
+        : 'Live (Tiingo)'
       : dataMode === 'agent'
         ? 'Agent scrape'
         : 'Mock catalog';
@@ -54,7 +66,8 @@ function AppContent({
     { id: 'portfolio' as View, label: 'Portfolio', icon: Briefcase },
     { id: 'data-sources' as View, label: 'Agent sources', icon: Link2 },
     { id: 'estimate-eval' as View, label: 'Estimate eval', icon: Gauge },
-    { id: 'chart-eval' as View, label: 'Chart eval', icon: LineChart },
+    { id: 'chart-eval' as View, label: 'Agent run history', icon: LineChart },
+    { id: 'prompt-eval' as View, label: 'Eval prompt test', icon: FlaskConical },
   ];
 
   return (
@@ -73,6 +86,16 @@ function AppContent({
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
               <DataModeToggle />
+              {loginAvailable &&
+                (authenticated ? (
+                  <Button type="button" variant="outline" size="sm" onClick={logout}>
+                    Sign out
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={requestLogin}>
+                    Sign in
+                  </Button>
+                ))}
               <div className="text-right hidden sm:block">
                 <p className="text-xs text-slate-500">
                   {lastUpdated
@@ -132,6 +155,7 @@ function AppContent({
         {currentView === 'data-sources' && <DataSourcesView />}
         {currentView === 'estimate-eval' && <EstimateEvalDashboard />}
         {currentView === 'chart-eval' && <ChartEvalDashboard />}
+        {currentView === 'prompt-eval' && <PromptEvalDashboard />}
       </main>
       <AgentScrapeQueueFloat />
     </div>
@@ -152,5 +176,11 @@ function AppWithNavigation() {
 }
 
 export default function App() {
-  return <AppWithNavigation />;
+  return (
+    <AuthProvider>
+      <PromptEvalRunProvider>
+        <AppWithNavigation />
+      </PromptEvalRunProvider>
+    </AuthProvider>
+  );
 }

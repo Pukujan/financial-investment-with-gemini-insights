@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getDb } from '../config/firebase.js';
 
 type TimestampField = 'lastUpdated' | 'createdAt';
@@ -53,5 +53,43 @@ export async function writeFirestoreCache(
     });
   } catch (error) {
     console.error(`Firestore cache write failed [${collection}/${docId}]:`, error);
+  }
+}
+
+/** Read cache up to maxStaleMs old (for rate-limit / outage fallback). */
+export async function readFirestoreCacheStale<T extends object>(
+  collection: string,
+  docId: string,
+  maxStaleMs: number,
+  timestampField: TimestampField = 'lastUpdated'
+): Promise<{ data: T; timestamp: number } | null> {
+  const db = getDb();
+  if (!db) return null;
+
+  try {
+    const docSnap = await getDoc(doc(db, collection, docId));
+    if (!docSnap.exists()) return null;
+
+    const data = docSnap.data() as T & { lastUpdated?: number; createdAt?: number };
+    const ts = data[timestampField];
+    if (typeof ts !== 'number' || Date.now() - ts > maxStaleMs) {
+      return null;
+    }
+
+    return { data, timestamp: ts };
+  } catch (error) {
+    console.error(`Firestore stale cache read failed [${collection}/${docId}]:`, error);
+    return null;
+  }
+}
+
+export async function deleteFirestoreCache(collection: string, docId: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+
+  try {
+    await deleteDoc(doc(db, collection, docId));
+  } catch (error) {
+    console.error(`Firestore cache delete failed [${collection}/${docId}]:`, error);
   }
 }

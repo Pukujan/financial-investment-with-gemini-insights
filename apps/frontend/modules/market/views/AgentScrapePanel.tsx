@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bot, ChevronDown, ChevronRight, Play, Database } from 'lucide-react';
-import type { AiCostTier, TierEstimate } from '@investai/shared';
+import type { AiCostTier, PromptEvalCooldownStatus, TierEstimate } from '@investai/shared';
 import { AI_COST_TIERS } from '@investai/shared';
 import { formatUsd } from '../../ai-estimate/utils/formatUsd';
+import { useAuth } from '../../auth/controllers/AuthProvider';
 import { useMarketData } from '../controllers/MarketDataProvider';
+import { usageLimitsApi } from '../services/usageLimitsApi';
 import { AgentCacheStatusBadge } from './AgentCacheStatusBadge';
 import { agentUsageSummary } from '../utils/agentUsageLabel';
+import { UsageLimitCooldownBanner } from './eval/UsageLimitCooldownBanner';
 
 function formatTokens(n: number): string {
   return n.toLocaleString();
@@ -49,6 +52,7 @@ function TierCard({ tier, selected, onSelect, disabled }: TierCardProps) {
 }
 
 export function AgentScrapePanel() {
+  const { loginAvailable, authenticated, requestLogin } = useAuth();
   const {
     agentEstimate,
     agentScrapeUsage,
@@ -69,8 +73,15 @@ export function AgentScrapePanel() {
   } = useMarketData();
 
   const [localExpanded, setLocalExpanded] = useState(agentPanelExpanded);
-
-  const expanded = localExpanded || agentPanelExpanded;
+  const [agentRunLimit, setAgentRunLimit] = useState<PromptEvalCooldownStatus | null>(null);
+  const refreshAgentRunLimit = useCallback(async () => {
+    try {
+      const limits = await usageLimitsApi.getAll();
+      setAgentRunLimit(limits.agentRun);
+    } catch {
+      setAgentRunLimit(null);
+    }
+  }, []);
 
   useEffect(() => {
     if (agentPendingConfirm) {
@@ -79,10 +90,24 @@ export function AgentScrapePanel() {
     }
   }, [agentPendingConfirm, setAgentPanelExpanded]);
 
+  useEffect(() => {
+    if (localExpanded || agentPanelExpanded) {
+      void refreshAgentRunLimit();
+    }
+  }, [localExpanded, agentPanelExpanded, refreshAgentRunLimit, authenticated]);
+
+  const expanded = localExpanded || agentPanelExpanded;
+  const agentRunBlocked = agentRunLimit != null && !agentRunLimit.allowed;
+
   const toggleExpanded = () => {
     const next = !expanded;
     setLocalExpanded(next);
     setAgentPanelExpanded(next);
+  };
+
+  const handleStart = async () => {
+    await startAgentScrape(true);
+    await refreshAgentRunLimit();
   };
 
   const estimate = agentEstimate;
@@ -133,113 +158,123 @@ export function AgentScrapePanel() {
 
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50 mb-4 overflow-hidden">
-      <button
-        type="button"
-        onClick={toggleExpanded}
-        className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-violet-100/80"
-      >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 shrink-0 text-violet-600" />
-        ) : (
-          <ChevronRight className="w-4 h-4 shrink-0 text-violet-600" />
-        )}
-        <Bot className="w-4 h-4 shrink-0 text-violet-600" />
-        <span className="font-medium text-violet-900 flex-1 truncate">{summaryLabel}</span>
-        <span className="text-xs text-violet-600 shrink-0">
-          {expanded ? 'Collapse' : 'Expand to start'}
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-violet-200 pt-3">
-          {agentScrapeUsage && !agentScraping && (
-            <div className="rounded-md border border-violet-300 bg-white/80 px-3 py-2 text-xs text-violet-900">
-              <p>
-                Dashboard is using the last agent run · {agentUsageSummary(agentScrapeUsage)}
-                {agentScrapeUsage.modelId ? ` · ${shortModelId(agentScrapeUsage.modelId)}` : ''}
-              </p>
-              <p className="mt-1 text-violet-700">
-                Costs below are for a new live scrape (cached batches are $0).
-              </p>
-            </div>
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-violet-100/80"
+        >
+          {expanded ? (
+            <ChevronDown className="w-4 h-4 shrink-0 text-violet-600" />
+          ) : (
+            <ChevronRight className="w-4 h-4 shrink-0 text-violet-600" />
           )}
-          <AgentCacheStatusBadge cache={cache} />
+          <Bot className="w-4 h-4 shrink-0 text-violet-600" />
+          <span className="font-medium text-violet-900 flex-1 truncate">{summaryLabel}</span>
+          <span className="text-xs text-violet-600 shrink-0">
+            {expanded ? 'Collapse' : 'Expand to start'}
+          </span>
+        </button>
 
-          <div>
-            <p className="text-xs font-medium text-violet-800 mb-2">Cost tier</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {AI_COST_TIERS.map(tierKey => {
-                const t = tierByKey?.[tierKey];
-                if (!t) return null;
-                return (
-                  <TierCard
-                    key={tierKey}
-                    tier={t}
-                    selected={selectedAgentTier === tierKey}
-                    onSelect={() => setSelectedAgentTier(tierKey)}
-                    disabled={busy}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <label className="flex items-start gap-2 text-sm text-violet-900 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={scrapeCharts}
-              onChange={e => {
-                setScrapeCharts(e.target.checked);
-                void requestAgentEstimate();
-              }}
-              disabled={busy}
-              className="mt-1 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+        {expanded && (
+          <div className="px-4 pb-4 space-y-4 border-t border-violet-200 pt-3">
+            <UsageLimitCooldownBanner
+              status={agentRunLimit}
+              scopeLabel="agent runs"
+              onSignIn={
+                loginAvailable && !authenticated ? () => requestLogin() : undefined
+              }
             />
-            <span>
-              <span className="font-medium">Scrape 30-day charts</span>
-              <span className="block text-xs text-violet-700 mt-0.5">
-                Extra LLM calls for OHLC history (vs synthetic drift). See Chart eval after run.
+
+            {agentScrapeUsage && !agentScraping && (
+              <div className="rounded-md border border-violet-300 bg-white/80 px-3 py-2 text-xs text-violet-900">
+                <p>
+                  Dashboard is using the last agent run · {agentUsageSummary(agentScrapeUsage)}
+                  {agentScrapeUsage.modelId ? ` · ${shortModelId(agentScrapeUsage.modelId)}` : ''}
+                </p>
+                <p className="mt-1 text-violet-700">
+                  Costs below are for chart-only LLM scrape (quotes from Live/Mock).
+                </p>
+              </div>
+            )}
+            <AgentCacheStatusBadge cache={cache} />
+
+            <div>
+              <p className="text-xs font-medium text-violet-800 mb-2">Cost tier</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {AI_COST_TIERS.map(tierKey => {
+                  const t = tierByKey?.[tierKey];
+                  if (!t) return null;
+                  return (
+                    <TierCard
+                      key={tierKey}
+                      tier={t}
+                      selected={selectedAgentTier === tierKey}
+                      onSelect={() => setSelectedAgentTier(tierKey)}
+                      disabled={busy}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="flex items-start gap-2 text-sm text-violet-900 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scrapeCharts}
+                onChange={e => {
+                  setScrapeCharts(e.target.checked);
+                  void requestAgentEstimate();
+                }}
+                disabled={busy}
+                className="mt-1 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+              />
+              <span>
+                <span className="font-medium">Scrape 30-day charts</span>
+                <span className="block text-xs text-violet-700 mt-0.5">
+                  LLM OHLC only — spot prices come from your Live/Mock quote source. See Agent run
+                  history after the job.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          {selectedEstimate && (
-            <p className="text-xs text-violet-700">
-              {selectedEstimate.label} — ~{formatTokens(selectedEstimate.estimatedTokens.total)}{' '}
-              tokens, {formatUsd(selectedEstimate.estimatedCostUsd)}
-            </p>
-          )}
+            {selectedEstimate && (
+              <p className="text-xs text-violet-700">
+                {selectedEstimate.label} — ~{formatTokens(selectedEstimate.estimatedTokens.total)}{' '}
+                tokens, {formatUsd(selectedEstimate.estimatedCostUsd)}
+              </p>
+            )}
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => startAgentScrape(true)}
-              disabled={busy || !selectedEstimate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
-            >
-              <Play className="w-4 h-4" />
-              {agentScraping ? 'Starting…' : 'Start'}
-              {selectedEstimate && !agentScraping && (
-                <span className="opacity-90">({formatUsd(selectedEstimate.estimatedCostUsd)})</span>
-              )}
-            </button>
-            {canLoadCache && (
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => loadFromAgentCache()}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-violet-300 text-violet-800 text-sm font-medium hover:bg-violet-100 disabled:opacity-50"
+                onClick={() => void handleStart()}
+                disabled={busy || !selectedEstimate || agentRunBlocked}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
               >
-                <Database className="w-4 h-4" />
-                Load cached
+                <Play className="w-4 h-4" />
+                {agentScraping ? 'Starting…' : 'Start'}
+                {selectedEstimate && !agentScraping && (
+                  <span className="opacity-90">({formatUsd(selectedEstimate.estimatedCostUsd)})</span>
+                )}
               </button>
-            )}
+              {canLoadCache && (
+                <button
+                  type="button"
+                  onClick={() => loadFromAgentCache()}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-violet-300 text-violet-800 text-sm font-medium hover:bg-violet-100 disabled:opacity-50"
+                >
+                  <Database className="w-4 h-4" />
+                  Load cached
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-violet-600">
+              Start runs in the background — use the floating queue (bottom-right) to track progress.
+              Live runs: 1h anonymous · 15m + 5/day signed in.
+            </p>
           </div>
-          <p className="text-xs text-violet-600">
-            Start runs in the background — use the floating queue (bottom-right) to track progress.
-          </p>
-        </div>
-      )}
+        )}
     </div>
   );
 }

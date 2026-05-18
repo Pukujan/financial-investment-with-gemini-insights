@@ -7,7 +7,8 @@ All caching is **server-side**. The frontend has no HTTP response cache (only Re
 | Layer | Where | TTL | Scope | Used for |
 |-------|--------|-----|--------|----------|
 | **Memory** | `utils/memoryCache.ts` | 60s (config) | Single Node process | Yahoo quotes, news, charts |
-| **Firestore** | `utils/firestoreCache.ts` | 15m / 24h | Shared across restarts | AI insights, predictions |
+| **Firestore** | `utils/firestoreCache.ts` | 15m / 24h | Shared across restarts | AI insights, predictions, market/agent bulk |
+| **Disk (eval)** | `.data/*-eval-history.json` | Indefinite | Server filesystem | Estimate & chart eval logs only |
 | **Portfolio** | Firestore direct | — | Persistent | User holdings (not a cache) |
 | **React state** | FE providers | Until refresh | Browser tab | UI display |
 
@@ -37,6 +38,10 @@ Shared read/write helpers — do not duplicate `getDoc`/`setDoc` in services.
 |------------|--------|-----|---------|
 | `aiInsights` | `{FIREBASE_APP_INSTANCE_ID}` | 15 min | `insightsCacheService` |
 | `stockPredictions` | `{instanceId}_{symbol}` | 24 h | `predictionCacheService` |
+| `marketBulkCache` | `{instanceId}_{mode}` | 24 h default | `marketFirestoreCache` |
+| `agentBulkCache` | `{instanceId}` | 24 h default | `agentFirestoreCache` |
+
+**Not in Firestore:** agent scrape **eval history** (estimate/chart accuracy logs) — see [AGENT_EVALS.md](./AGENT_EVALS.md).
 
 ```ts
 await readFirestoreCache(collection, docId, ttlMs, 'lastUpdated' | 'createdAt');

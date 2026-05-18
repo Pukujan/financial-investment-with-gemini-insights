@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
-import type { AiCostTier, MarketDataMode } from '@investai/shared';
+import type { AiCostTier, MarketDataMode, QuoteDataMode } from '@investai/shared';
 import { parseAiCostTier } from '../../agent-scrape/services/agentScrapeService.js';
 import { sendSuccess } from '../../../utils/response.js';
 import { asyncHandler } from '../../../utils/asyncHandler.js';
 import { AppError } from '../../../middleware/errorHandler.js';
+import { getMarketDataMode } from '../../../config/marketDataMode.js';
 import * as marketService from '../services/marketService.js';
 
 export const getStocks = asyncHandler(async (req: Request, res: Response) => {
@@ -21,11 +22,21 @@ export const getSettings = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const putSettings = asyncHandler(async (req: Request, res: Response) => {
-  const { dataMode } = req.body as { dataMode?: MarketDataMode };
-  if (!dataMode) {
-    throw new AppError('dataMode is required ("live", "mock", or "agent")', 400);
+  const { dataMode, quoteDataMode } = req.body as {
+    dataMode?: MarketDataMode;
+    quoteDataMode?: QuoteDataMode;
+  };
+  if (!dataMode && !quoteDataMode) {
+    throw new AppError(
+      'dataMode or quoteDataMode is required',
+      400,
+      'INVALID_MARKET_MODE'
+    );
   }
-  const settings = marketService.updateMarketDataMode(dataMode);
+  const settings = marketService.updateMarketDataMode(
+    dataMode ?? getMarketDataMode(),
+    quoteDataMode
+  );
   sendSuccess(res, settings);
 });
 

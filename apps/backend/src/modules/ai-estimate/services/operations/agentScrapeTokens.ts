@@ -29,8 +29,9 @@ export interface AgentScrapeTokenPlan {
 
 export function buildAgentScrapeTokenPlan(
   symbols: string[],
-  options?: { scrapeCharts?: boolean }
+  options?: { scrapeCharts?: boolean; chartsOnly?: boolean }
 ): AgentScrapeTokenPlan {
+  const chartsOnly = options?.chartsOnly !== false;
   const scrapeCharts = options?.scrapeCharts === true;
   const batchSize = env.agentScrapeBatchSize;
   const chartBatchSize = env.agentScrapeChartBatchSize;
@@ -48,16 +49,18 @@ export function buildAgentScrapeTokenPlan(
   let prompt = 0;
   let completion = 0;
 
-  for (const batch of batches) {
-    if (!batch.cached) {
-      prompt += EST_PROMPT_PER_BATCH;
-      completion += EST_COMPLETION_PER_BATCH;
+  if (!chartsOnly) {
+    for (const batch of batches) {
+      if (!batch.cached) {
+        prompt += EST_PROMPT_PER_BATCH;
+        completion += EST_COMPLETION_PER_BATCH;
+      }
     }
-  }
 
-  if (!newsCached) {
-    prompt += EST_NEWS_PROMPT;
-    completion += EST_NEWS_COMPLETION;
+    if (!newsCached) {
+      prompt += EST_NEWS_PROMPT;
+      completion += EST_NEWS_COMPLETION;
+    }
   }
 
   if (scrapeCharts) {

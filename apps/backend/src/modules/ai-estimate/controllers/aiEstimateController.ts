@@ -21,6 +21,7 @@ export const getAgentScrapeEstimate = asyncHandler(async (req: Request, res: Res
   if (!isAgentScrapeConfigured()) {
     throw new AppError(agentScrapeConfigError(), 503, 'AGENT_NOT_CONFIGURED');
   }
-  const scrapeCharts = req.query.scrapeCharts === '1' || req.query.scrapeCharts === 'true';
-  sendSuccess(res, await estimateAgentScrape(getAgentSymbols(), { scrapeCharts }));
+  const scrapeCharts = req.query.scrapeCharts !== '0' && req.query.scrapeCharts !== 'false';
+  const chartsOnly = req.query.chartsOnly !== '0' && req.query.chartsOnly !== 'false';
+  sendSuccess(res, await estimateAgentScrape(getAgentSymbols(), { scrapeCharts, chartsOnly }));
 });
