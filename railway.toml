@@ -1,0 +1,10 @@
+# Railway: deploy Express API only (frontend stays on Vercel).
+# Set RAILPACK_NO_SPA=1 in Railway Variables if Railpack still detects Vite static mode.
+
+[build]
+buildCommand = "npm run build -w @investai/shared && npm run build -w @investai/backend"
+
+[deploy]
+startCommand = "npm run start -w @investai/backend"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 120
