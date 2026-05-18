@@ -1,8 +1,14 @@
-import type { AgentScrapeJob, AiCostTier } from '@investai/shared';
+import type { AgentScrapeJob, AiCostTier, StockQuote } from '@investai/shared';
 import { http } from '../../../shared/api/http';
 
 export const agentJobApi = {
-  startJob: (options: { tier: AiCostTier; forceLive: boolean; scrapeCharts?: boolean }) =>
+  startJob: (options: {
+    tier: AiCostTier;
+    forceLive: boolean;
+    scrapeCharts?: boolean;
+    chartsOnly?: boolean;
+    anchorQuotes?: StockQuote[];
+  }) =>
     http<AgentScrapeJob>('/api/agent-scrape/jobs', {
       method: 'POST',
       body: JSON.stringify(options),

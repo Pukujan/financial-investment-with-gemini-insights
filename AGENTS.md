@@ -3,7 +3,8 @@
 Read this first. Humans should start at [README.md](./README.md).
 
 **Canonical behavior reference:** [docs/HOW_IT_WORKS_NOW.md](./docs/HOW_IT_WORKS_NOW.md)  
-**Today's changes:** [docs/DEV_LOG_2026-05-16.md](./docs/DEV_LOG_2026-05-16.md)
+**Today's changes:** [docs/DEV_LOG_2026-05-18.md](./docs/DEV_LOG_2026-05-18.md)  
+**System + prompt engineering:** [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md)
 
 ## What this app does
 
@@ -17,6 +18,9 @@ Financial dashboard: stock quotes and charts (**Tiingo** in live mode), mock or 
 | `apps/backend/` | REST API — routes → controllers → services (JSON, no views) |
 | `packages/shared/` | Shared TypeScript types |
 | `docs/HOW_IT_WORKS_NOW.md` | **How it works now** (Tiingo, strict live, errors) |
+| `docs/PROJECT_SCOPE.md` | **Full capabilities** — golden/Yahoo ground truth, RAG, eval UI proof, predictions |
+| `docs/DEV_LOG_2026-05-18.md` | Dev log — agent charts-only, dual eval tabs, usage limits |
+| `docs/AGENT_EVALS.md` | **Eval dashboards** (estimate, chart, prompt — timeline UI, storage) |
 | `docs/DEV_LOG_2026-05-16.md` | Detailed dev log for 16 May 2026 |
 | `docs/CODEBASE_MAP.md` | File-by-file index |
 | `.env` (repo root) | **All backend secrets** |
@@ -58,7 +62,11 @@ Verify: `curl http://localhost:3001/api/health` → `data.env.missing` should be
 | GET | `/api/market/stocks` | market (`?refresh=1`) |
 | GET | `/api/market/news` | market |
 | GET | `/api/market/stocks/:symbol/timeseries` | market |
-| GET/POST | `/api/agent-scrape/golden`, `/eval` | agent-scrape |
+| GET/POST | `/api/agent-scrape/golden`, `/eval` | agent-scrape (static regression golden) |
+| GET | `/api/agent-scrape/usage-limits` | agent-scrape (`agent-run` + `prompt-test` buckets) |
+| GET/POST | `/api/agent-scrape/eval/prompt` | agent-scrape (3-tier vs Yahoo golden) |
+| POST | `/api/agent-scrape/eval/prompt/test` | Direct 30-day test + API summary |
+| GET | `/api/agent-scrape/eval/prompt/cooldown` | Prompt-test cooldown only |
 | GET | `/api/ai/insights` | ai (`?refresh=1`, returns `meta`) |
 | POST | `/api/ai/stocks/:symbol/prediction` | ai |
 | GET/PUT | `/api/portfolio` | portfolio |
@@ -69,9 +77,9 @@ Verify: `curl http://localhost:3001/api/health` → `data.env.missing` should be
 |------|--------|
 | **mock** | `mockData.ts` catalog |
 | **live** | Tiingo only — **no mock fallback** on failure (503 + error codes) |
-| **agent** | OpenRouter LLM scrape agents — no Tiingo quota ([docs/AGENT_SCRAPE.md](./docs/AGENT_SCRAPE.md)) |
+| **agent** | 30-day LLM chart jobs; quotes/news from `quoteDataMode` (live/mock) — see [PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md) |
 
-Toggle in header or `PUT /api/market/settings` with `{ "dataMode": "live" | "mock" }`.
+Toggle in header or `PUT /api/market/settings` with `{ "dataMode", "quoteDataMode" }`.
 
 ## Error codes (UI: `StatusBanner`)
 

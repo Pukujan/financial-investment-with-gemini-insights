@@ -19,6 +19,14 @@ import {
   newsCacheKey,
   splitSymbolBatches,
 } from './agentScrapeCache.js';
+import {
+  readAgentBulkFromFirestore,
+  readAgentNewsFromFirestore,
+  writeAgentBulkToFirestore,
+  writeAgentNewsToFirestore,
+} from './agentFirestoreCache.js';
+import { normalizeSeriesBySymbol } from '../../market/services/marketSeriesUtils.js';
+import { buildEodSeriesFromQuote } from '@investai/shared';
 import { estimateAgentScrape, computeActualCostUsd } from '../../ai-estimate/services/aiEstimateService.js';
 import { getTierModelId, parseAiCostTier } from '../../ai-estimate/services/modelTiers.js';
 
@@ -45,14 +53,17 @@ export function getLastAgentBatchError(): string | undefined {
 
 export function getAgentScrapeEstimate(
   symbols?: string[],
-  options?: { scrapeCharts?: boolean }
+  options?: { scrapeCharts?: boolean; chartsOnly?: boolean }
 ): Promise<AgentScrapeEstimate> {
-  return estimateAgentScrape(symbols ?? getAgentSymbols(), options);
+  return estimateAgentScrape(symbols ?? getAgentSymbols(), {
+    chartsOnly: options?.chartsOnly !== false,
+    scrapeCharts: options?.scrapeCharts,
+  });
 }
 
 export { parseAiCostTier };
 
-interface AgentBulkCache {
+export interface AgentBulkCache {
   quotes: StockQuote[];
   seriesBySymbol: Record<string, TimeSeriesData[]>;
 }
@@ -61,22 +72,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Synthetic daily EOD series — same convention as Yahoo `interval: 1d` (see buildEodSeriesFromQuote). */
 export function timeSeriesFromQuote(quote: StockQuote): TimeSeriesData[] {
-  const base = quote.price;
-  return Array.from({ length: 30 }, (_, i) => {
-    const drift = (i - 15) * 0.002 * base;
-    const close = Math.max(0.01, base + drift);
-    const day = new Date();
-    day.setDate(day.getDate() - (29 - i));
-    return {
-      timestamp: day.toISOString().split('T')[0],
-      open: close * 0.998,
-      high: close * 1.01,
-      low: close * 0.99,
-      close,
-      volume: 1_000_000,
-    };
-  });
+  return buildEodSeriesFromQuote(quote.price, 30);
 }
 
 function emptyUsage(): AgentScrapeUsage {
@@ -155,7 +153,7 @@ export async function fetchAgentQuotes(
 
   const seriesBySymbol: Record<string, TimeSeriesData[]> = {};
   for (const q of quotes) {
-    seriesBySymbol[q.symbol] = timeSeriesFromQuote(q);
+    seriesBySymbol[q.symbol.toUpperCase()] = timeSeriesFromQuote(q);
   }
 
   const allFromCache = totalUsage.totalTokens === 0;
@@ -167,7 +165,7 @@ export async function fetchAgentQuotes(
 
   return {
     quotes,
-    seriesBySymbol,
+    seriesBySymbol: normalizeSeriesBySymbol(seriesBySymbol),
     failedSymbols,
     usage: {
       fromCache: allFromCache,
@@ -192,12 +190,24 @@ export async function getAgentBulkCached(
   const key = bulkCacheKey();
   const forceLive = options?.forceLive === true;
 
-  if (forceLive) {
+  if (forceLive || options?.refresh) {
     invalidateAgentScrapeCache();
-  } else if (!options?.refresh) {
+  }
+
+  if (!forceLive && !options?.refresh) {
     const cached = getMemoryCached<AgentBulkCache>(key, memoryCacheTtl.marketQuoteMs);
     if (cached?.quotes.length) {
       return { bulk: cached, usage: emptyUsage() };
+    }
+
+    const fsBulk = await readAgentBulkFromFirestore();
+    if (fsBulk?.quotes.length) {
+      const bulk: AgentBulkCache = {
+        quotes: fsBulk.quotes,
+        seriesBySymbol: normalizeSeriesBySymbol(fsBulk.seriesBySymbol),
+      };
+      setMemoryCached(key, bulk);
+      return { bulk, usage: emptyUsage() };
     }
   }
 
@@ -207,6 +217,7 @@ export async function getAgentBulkCached(
   });
   const bulk = { quotes, seriesBySymbol };
   setMemoryCached(key, bulk);
+  void writeAgentBulkToFirestore(bulk);
 
   return {
     bulk,
@@ -232,6 +243,15 @@ export async function fetchAgentMarketNews(
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
     }
+
+    const fsArticles = await readAgentNewsFromFirestore();
+    if (fsArticles) {
+      setMemoryCached(key, fsArticles);
+      return {
+        articles: fsArticles,
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      };
+    }
   }
 
   const tier = options?.tier ?? 'cheaper';
@@ -242,6 +262,7 @@ export async function fetchAgentMarketNews(
     modelId
   );
   setMemoryCached(key, articles);
+  void writeAgentNewsToFirestore(articles);
   return { articles, usage, tier, modelId };
 }
 

@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { HealthStatus } from '@investai/shared';
 import { env, validateEnv } from '../../../config/env.js';
 import { getMarketDataMode } from '../../../config/marketDataMode.js';
-import { LIVE_PROVIDER } from '../../market/services/liveMarketProvider.js';
+import { resolveLiveProvider } from '../../market/services/liveMarketProvider.js';
 import { probeLiveProvider } from '../../market/services/marketService.js';
 import { sendSuccess } from '../../../utils/response.js';
 
@@ -40,7 +40,7 @@ export async function getHealth(_req: Request, res: Response): Promise<void> {
       openrouterPrimaryModel: env.openRouterModelPrimary,
       openrouterFallbackModel: env.openRouterModelFallback,
       marketDataMode,
-      marketLiveProvider: marketDataMode === 'live' ? LIVE_PROVIDER : 'mock-catalog',
+      marketLiveProvider: marketDataMode === 'live' ? resolveLiveProvider() : 'mock-catalog',
       marketLiveReachable: liveProbe.reachable,
     },
     env: {

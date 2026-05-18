@@ -13,6 +13,7 @@
     "start": "npm run start -w @investai/backend",
     "test": "npm run test -w @investai/backend",
     "test:tiingo": "npm run test:tiingo -w @investai/backend",
+    "test:yahoo": "npm run test:yahoo -w @investai/backend",
     "lint": "npm run lint --workspaces --if-present"
   },
   "devDependencies": {

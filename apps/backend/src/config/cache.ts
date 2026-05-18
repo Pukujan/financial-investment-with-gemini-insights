@@ -19,5 +19,18 @@ export const firestoreCacheTtl = {
 export const firestoreCollections = {
   aiInsights: 'aiInsights',
   stockPredictions: 'stockPredictions',
+  /** Daily market bulk quotes + chart series (survives Railway restarts). */
+  marketBulk: 'marketBulkCache',
+  marketNews: 'marketNewsCache',
+  /** Agent scrape bulk quotes + 30d chart series. */
+  agentBulk: 'agentBulkCache',
+  agentNews: 'agentNewsCache',
+  ragChunks: 'ragChunks',
+  ragRetrievalLogs: 'ragRetrievalLogs',
+  promptEval: 'promptEvalExperiments',
+  chartEval: 'chartEvalRuns',
+  estimateEval: 'estimateEvalRuns',
   portfolioPrefix: (instanceId: string) => `portfolios_${instanceId}`,
 } as const;
+
+export const marketFirestoreTtlMs = marketTtlMs;

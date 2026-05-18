@@ -1,6 +1,12 @@
 import type { ApiResponse } from '@investai/shared';
+import { getAuthToken } from '@/modules/auth/utils/authStorage';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export class ApiError extends Error {
   constructor(
@@ -14,9 +20,14 @@ export class ApiError extends Error {
 }
 
 function apiUnreachableMessage(status: number): string {
+  const hint =
+    status === 500
+      ? 'The Vite proxy often returns HTTP 500 when the backend is down or crashed on startup — check the terminal running `npm run dev` for errors.'
+      : 'Ensure the backend process is running.';
   return (
     `API returned no data (HTTP ${status}). ` +
-    'Start the backend with `npm run dev` from the repo root and ensure `PORT` in `.env` matches the Vite proxy (default 3004).'
+    `Start the backend with \`npm run dev\` from the repo root. ${hint} ` +
+    '`PORT` in the repo root `.env` must match what Vite proxies to (see backend log line `InvestAI API → http://localhost:…`).'
   );
 }
 
@@ -49,7 +60,7 @@ async function parseResponse<T>(res: Response): Promise<ApiResponse<T>> {
 
 export async function http<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options?.headers },
     ...options,
   });
   const body = await parseResponse<T>(res);
@@ -61,7 +72,7 @@ export async function httpWithMeta<T>(
   options?: RequestInit
 ): Promise<{ data: T; meta?: Record<string, unknown> }> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options?.headers },
     ...options,
   });
   const body = await parseResponse<T>(res);

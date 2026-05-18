@@ -43,7 +43,8 @@ export type AppViewId =
   | 'portfolio'
   | 'data-sources'
   | 'estimate-eval'
-  | 'chart-eval';
+  | 'chart-eval'
+  | 'prompt-eval';
 
 interface MarketDataContextType {
   stocks: StockQuote[];
@@ -135,7 +136,7 @@ export function MarketDataProvider({
   const [agentJobId, setAgentJobId] = useState<string | null>(null);
   const [agentPanelExpanded, setAgentPanelExpanded] = useState(false);
   const [selectedAgentTier, setSelectedAgentTier] = useState<AiCostTier>('cheaper');
-  const [scrapeCharts, setScrapeCharts] = useState(false);
+  const [scrapeCharts, setScrapeCharts] = useState(true);
   const [scrapeCompleteGuide, setScrapeCompleteGuide] = useState(false);
 
   const dismissScrapeCompleteGuide = useCallback(() => {
@@ -170,8 +171,8 @@ export function MarketDataProvider({
       liveReachable?: boolean | null;
     }) => {
       setDataModeState(settings.dataMode);
-      if (settings.provider === 'tiingo') {
-        setLiveProvider('tiingo');
+      if (settings.provider === 'tiingo' || settings.provider === 'yahoo') {
+        setLiveProvider(settings.provider);
       } else if (settings.provider === 'openrouter-agent') {
         setLiveProvider('openrouter-agent');
       } else if (settings.dataMode === 'mock') {
@@ -199,7 +200,10 @@ export function MarketDataProvider({
   const loadAgentEstimate = useCallback(async () => {
     setAgentEstimateLoading(true);
     try {
-      const estimate = await aiEstimateApi.getAgentScrapeEstimate({ scrapeCharts });
+      const estimate = await aiEstimateApi.getAgentScrapeEstimate({
+        scrapeCharts,
+        chartsOnly: true,
+      });
       setAgentEstimate(estimate);
       return estimate;
     } catch (err) {
@@ -407,6 +411,8 @@ export function MarketDataProvider({
           tier: selectedAgentTier,
           forceLive,
           scrapeCharts,
+          chartsOnly: true,
+          anchorQuotes: stocks.length > 0 ? stocks : undefined,
         });
         setAgentJob(job);
         setAgentJobId(job.id);
@@ -425,7 +431,7 @@ export function MarketDataProvider({
         setErrorCode(err instanceof ApiError ? err.code ?? 'AGENT_SCRAPE_FAILED' : 'AGENT_SCRAPE_FAILED');
       }
     },
-    [pollAgentJob, scrapeCharts, selectedAgentTier]
+    [pollAgentJob, scrapeCharts, selectedAgentTier, stocks]
   );
 
   const cancelAgentScrape = useCallback(async () => {
@@ -492,7 +498,7 @@ export function MarketDataProvider({
     setNewsError(null);
     setNewsErrorCode(null);
     setWarnings([]);
-    setAgentPendingConfirm(true);
+    setAgentPendingConfirm(false);
     setAgentPanelExpanded(true);
     setLoading(false);
 
@@ -503,16 +509,17 @@ export function MarketDataProvider({
     const last = prefs.lastJob;
     if (last?.status === 'completed' && last.usage) {
       setAgentScrapeUsage(last.usage);
-      try {
-        await refreshMarketData(false, {
-          silent: true,
-          forMode: 'agent',
-          agentTier: last.tier,
-          keepAgentPanel: true,
-        });
-      } catch {
-        /* user can Load cached or Start manually */
-      }
+    }
+
+    try {
+      await refreshMarketData(false, {
+        silent: true,
+        forMode: 'agent',
+        agentTier: last?.tier,
+        keepAgentPanel: true,
+      });
+    } catch {
+      /* quotes may load on next refresh */
     }
   }, [loadAgentEstimate, refreshMarketData, restoreAgentJob]);
 
@@ -534,6 +541,20 @@ export function MarketDataProvider({
   const setDataMode = useCallback(
     async (mode: MarketDataMode) => {
       if (switchingMode) return;
+
+      if (dataMode === 'agent' && (mode === 'live' || mode === 'mock')) {
+        setSwitchingMode(true);
+        try {
+          const settings = await marketApi.setDataMode('agent', mode);
+          applySettings(settings);
+          await refreshMarketData(true, { forMode: 'agent' });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to update quote source');
+        } finally {
+          setSwitchingMode(false);
+        }
+        return;
+      }
 
       setSwitchingMode(true);
       setError(null);
@@ -576,7 +597,7 @@ export function MarketDataProvider({
         setSwitchingMode(false);
       }
     },
-    [applySettings, initAgentMode, loadSettings, refreshMarketData, switchingMode]
+    [applySettings, dataMode, initAgentMode, loadSettings, refreshMarketData, switchingMode]
   );
 
   useEffect(() => {

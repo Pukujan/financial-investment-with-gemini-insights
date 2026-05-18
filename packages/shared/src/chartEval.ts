@@ -1,3 +1,5 @@
+import type { ChartDayComparison, ChartPriceConvention } from './tradingDays.js';
+
 /** Per-symbol price alignment between quote scrape and chart series */
 export interface AgentChartSymbolEval {
   symbol: string;
@@ -10,6 +12,12 @@ export interface AgentChartSymbolEval {
   quoteVsLlmPct: number | null;
   /** % diff: synthetic vs LLM last close */
   syntheticVsLlmPct: number | null;
+  /** Agent vs Yahoo EOD close per trading day (when live reference fetched). */
+  dailyVsLive?: ChartDayComparison[];
+  /** Avg |deviationPct| across days with live data */
+  avgAbsLiveDeviationPct?: number | null;
+  /** Latest trading day agent vs live */
+  latestDayLiveDeviationPct?: number | null;
 }
 
 export interface AgentChartEvalSummary {
@@ -19,6 +27,8 @@ export interface AgentChartEvalSummary {
   avgQuoteVsLlmPct: number | null;
   avgAbsQuoteVsLlmPct: number | null;
   maxAbsQuoteVsLlmPct: number | null;
+  /** Mean of per-symbol avg |agent − Yahoo| % when live reference present */
+  avgAbsLiveDeviationPct?: number | null;
 }
 
 export interface AgentChartEvalRecord {
@@ -26,6 +36,9 @@ export interface AgentChartEvalRecord {
   completedAt: string;
   chartMode: 'synthetic' | 'llm';
   scrapeCharts: boolean;
+  /** Both agent and Yahoo series use daily EOD closes (last bar = latest session). */
+  priceConvention: ChartPriceConvention;
+  liveReference?: 'yahoo' | 'none';
   symbols: AgentChartSymbolEval[];
   summary: AgentChartEvalSummary;
 }

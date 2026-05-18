@@ -40,6 +40,13 @@ https://water-matrix-96907145.figma.site
 - Beautiful imagery from Unsplash
 - Stay updated with market-moving news
 
+### 📐 Agent scrape evals (Estimate, Chart & Prompt)
+- **Estimate eval** — compares pre-scrape token/cost **estimates** to **actual** OpenRouter usage per job
+- **Chart eval** — compares agent **quotes** to chart **EOD closes** and optional **Yahoo** daily bars
+- **Prompt eval** — runs **three LLM tiers** vs **Yahoo golden** with optional **RAG**; timeline tracks prompt-version improvement
+- Clickable **run timelines** in the UI; detail panels show deviation charts, golden tables, and RAG flow on one screen
+- Product scope: [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md) · technical detail: [docs/AGENT_EVALS.md](./docs/AGENT_EVALS.md)
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -92,9 +99,118 @@ https://water-matrix-96907145.figma.site
 ## Documentation
 
 - [AGENTS.md](./AGENTS.md) — **fast orientation for humans & coding agents**
+- [Project scope](./docs/PROJECT_SCOPE.md) — golden eval, 3-tier LLM comparison, RAG, prompt iteration
+- [Agent scrape evals](./docs/AGENT_EVALS.md) — **estimate, chart & prompt eval dashboards** (full detail + diagrams)
+- [How it works now](./docs/HOW_IT_WORKS_NOW.md) — market modes, Tiingo/Yahoo, caching
+- [Cache architecture](./docs/CACHE.md) — memory, Firestore, eval disk storage
 - [Codebase map](./docs/CODEBASE_MAP.md) — file-by-file index
 - [Architecture guide](./docs/ARCHITECTURE.md) — system design + MVC
 - [Feature modules](./docs/FEATURE_MODULES.md) — how to add/split modules
+- [Agent scrape mode](./docs/AGENT_SCRAPE.md) — OpenRouter quote/news/chart jobs
+
+## Agent scrape evals (overview)
+
+In **Agent** market mode, each completed scrape job can produce two analytics records. Open the app views **Estimate eval** and **Chart eval** from the header.
+
+### System context
+
+```mermaid
+flowchart TB
+  subgraph modes [Market data modes]
+    MOCK[Mock catalog]
+    LIVE[Live Yahoo/Tiingo]
+    AGENT[Agent OpenRouter scrape]
+  end
+
+  subgraph evals [Eval analytics - Agent jobs only]
+    EST[Estimate eval<br/>tokens and cost]
+    CHART[Chart eval<br/>quotes vs EOD series]
+  end
+
+  AGENT --> JOB[AgentScrapeJob]
+  JOB --> EST
+  JOB --> CHART
+
+  subgraph storage [Persistence]
+    DISK[(Server .data JSON)]
+    LS[(Browser localStorage)]
+    FS[(Firestore)]
+  end
+
+  EST --> DISK
+  CHART --> DISK
+  EST --> LS
+  CHART --> LS
+  AGENT -.quotes/charts.-> FS
+
+  style FS fill:#e0f2fe
+  style DISK fill:#fef3c7
+  style LS fill:#fef3c7
+```
+
+**Important:** Firestore holds **portfolio**, **AI insights**, and **market/agent quote bulk** caches. Eval **history logs** use disk + localStorage so analytics survive without mixing into quote cache documents.
+
+### Estimate eval — what you see when you click a run
+
+```mermaid
+flowchart LR
+  subgraph timeline [Run timeline]
+    R1[Job 3 - cheaper tier]
+    R2[Job 2 - balanced]
+    R3[Job 1 - cached]
+  end
+
+  R1 -->|click| DETAIL[Detail panel]
+
+  subgraph detail [Estimate vs actual]
+    T1[Prompt tokens est vs actual]
+    T2[Completion tokens]
+    T3[Total tokens + delta %]
+    C1[Cost USD + delta %]
+    BADGE[Accuracy excellent/good/...]
+  end
+
+  DETAIL --> detail
+```
+
+1. Before scrape: `estimateSnapshot` from `estimateAgentScrape()`.  
+2. After scrape: actual `usage` on the job.  
+3. Dashboard computes delta % and rating (`excellent` ≤10%, etc.).
+
+### Chart eval — EOD alignment and Yahoo comparison
+
+Yahoo charts use `interval: 1d`: each point is the **session close** (end of day), not the open. Agent synthetic series uses the same **trading-day / EOD** convention (`buildEodSeriesFromQuote` in `packages/shared`).
+
+```mermaid
+sequenceDiagram
+  participant Agent as Agent scrape
+  participant Synth as Synthetic EOD series
+  participant LLM as LLM 30d charts optional
+  participant Yahoo as Yahoo 1d API
+  participant Eval as Chart eval
+
+  Agent->>Synth: last bar close = quote price
+  opt Scrape 30-day charts
+    Agent->>LLM: OHLC per symbol
+  end
+  Eval->>Yahoo: fetch up to 8 symbols
+  Eval->>Eval: dailyVsLive per date
+  Note over Eval: deviationPct = (agentClose - yahooClose) / yahooClose
+```
+
+**UI after click:** symbol table, **Agent vs Yahoo** line chart (EOD closes by day), **daily deviation %** bar chart.
+
+### Skip cache (fresh data for eval)
+
+| User action | Result |
+|-------------|--------|
+| Agent job with **Force live** | Clears agent caches → full scrape → new eval rows |
+| **Refresh** on stocks (`?refresh=1`) | Clears market + agent caches |
+| **Load from cache** | 0 tokens; estimate rating = `cached` |
+
+Full diagrams, API paths, and file index: **[docs/AGENT_EVALS.md](./docs/AGENT_EVALS.md)**
+
+---
 
 ## 🏗️ Project Structure (Modular Monolith)
 
@@ -106,7 +222,7 @@ https://water-matrix-96907145.figma.site
 │   │   └── contexts/
 │   └── backend/           # Express API (MVC)
 │       └── src/
-│           ├── modules/   # market | ai | portfolio | health
+│           ├── modules/   # market | ai | portfolio | agent-scrape | health
 │           │   ├── controllers/
 │           │   ├── services/
 │           │   └── routes/
@@ -276,7 +392,12 @@ Built with ❤️ using React + TypeScript + Vite
 - Buy/Hold/Sell recommendations with confidence scores
 - Market trend analysis
 - Risk alerts with recommendations
-- Powered by Groq's Llama 3.3 70B model
+- Powered by OpenRouter (configurable models)
+
+### Agent eval dashboards
+- **Estimate eval:** timeline of scrapes → click to see estimated vs actual tokens and USD
+- **Chart eval:** timeline of scrapes → click to see quote/chart alignment and agent vs Yahoo EOD deviation charts
+- See [docs/AGENT_EVALS.md](./docs/AGENT_EVALS.md)
 
 ### Portfolio
 - Holdings with performance tracking

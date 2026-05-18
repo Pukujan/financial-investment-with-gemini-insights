@@ -10,6 +10,20 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3001', 10),
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  /** Demo gate — set both to require login before any /api call (except health + auth). */
+  demoAuthUser: process.env.DEMO_AUTH_USER ?? '',
+  demoAuthPassword: process.env.DEMO_AUTH_PASSWORD ?? '',
+  demoAuthSecret:
+    process.env.DEMO_AUTH_SECRET ??
+    process.env.DEMO_AUTH_PASSWORD ??
+    'change-me-demo-auth-secret',
+  /**
+   * Live quotes: `yahoo` (default, yahoo-finance2 / yfinance-style) | `tiingo` (API key).
+   */
+  marketLiveProvider: (() => {
+    const p = (process.env.MARKET_LIVE_PROVIDER ?? 'yahoo').toLowerCase();
+    return p === 'tiingo' ? ('tiingo' as const) : ('yahoo' as const);
+  })(),
   appVersion: process.env.npm_package_version ?? '1.0.0',
   openRouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
   /** Primary — DeepSeek V3 (~$0.20/$0.77 per 1M tokens on OpenRouter) */
@@ -139,9 +153,15 @@ export function validateEnv(): EnvValidationResult {
     );
   }
 
-  if (env.marketDataMode === 'live' && !env.isTiingoConfigured()) {
+  if (env.marketDataMode === 'live' && env.marketLiveProvider === 'tiingo' && !env.isTiingoConfigured()) {
     warnings.push(
-      'MARKET_DATA_MODE=live but TIINGO_API_TOKEN is not set — live stocks/news will fail'
+      'MARKET_DATA_MODE=live with MARKET_LIVE_PROVIDER=tiingo but TIINGO_API_TOKEN is not set'
+    );
+  }
+
+  if (env.marketDataMode === 'live' && env.marketLiveProvider === 'yahoo') {
+    warnings.push(
+      'Live mode uses Yahoo Finance via yahoo-finance2 (same source as yfinance; no API key). News uses demo catalog.'
     );
   }
 

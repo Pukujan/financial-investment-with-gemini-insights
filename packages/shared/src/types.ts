@@ -137,13 +137,17 @@ export interface PortfolioDocument {
 /** `live` = Tiingo API. `mock` = static catalog. `agent` = LLM scrape agents (OpenRouter). */
 export type MarketDataMode = 'live' | 'mock' | 'agent';
 
-export type MarketLiveProvider = 'tiingo';
+export type MarketLiveProvider = 'tiingo' | 'yahoo';
 export type MarketAgentProvider = 'openrouter-agent';
 
 export type MarketProvider = MarketLiveProvider | MarketAgentProvider | 'mock-catalog';
 
+export type QuoteDataMode = 'live' | 'mock';
+
 export interface MarketDataSettings {
   dataMode: MarketDataMode;
+  /** Quote/news source when dataMode is agent (Live or Mock) */
+  quoteDataMode: QuoteDataMode;
   /** Active data provider for the current mode */
   provider: MarketProvider;
   /** Whether the live quote provider responded successfully (only meaningful in live mode) */

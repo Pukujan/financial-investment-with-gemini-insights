@@ -13,7 +13,7 @@ import { buildAgentScrapeTokenPlan } from './operations/agentScrapeTokens.js';
 
 export async function estimateAgentScrape(
   symbols: string[],
-  options?: { scrapeCharts?: boolean }
+  options?: { scrapeCharts?: boolean; chartsOnly?: boolean }
 ): Promise<AiOperationEstimate> {
   const plan = buildAgentScrapeTokenPlan(symbols, options);
   const { live, cached } = countLiveRequests(plan.batches, plan.newsCached);

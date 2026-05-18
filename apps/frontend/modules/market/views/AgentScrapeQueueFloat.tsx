@@ -15,12 +15,15 @@ import {
 import type { AgentJobStepStatus, AgentScrapeJob } from '@investai/shared';
 import { agentUsageSummary } from '../utils/agentUsageLabel';
 import { useMarketData } from '../controllers/MarketDataProvider';
+import { usePromptEvalRun } from '../controllers/PromptEvalRunProvider';
 import { useDraggablePanel } from '../hooks/useDraggablePanel';
 import { loadAgentQueuePrefs, saveAgentQueuePrefs } from '../utils/agentQueueStorage';
+import { PromptEvalJobFloatPanel } from './eval/PromptEvalJobFloatPanel';
 
 const PANEL_W = 352;
 const PANEL_H_MIN = 140;
 const PANEL_H_EXPANDED = 300;
+const PANEL_H_PROMPT_EVAL = 440;
 
 function StepIcon({ status }: { status: AgentJobStepStatus }) {
   switch (status) {
@@ -57,6 +60,7 @@ function statusLabel(status: AgentScrapeJob['status'] | 'idle'): string {
 }
 
 export function AgentScrapeQueueFloat() {
+  const { promptEvalJob, promptEvalRunning, clearPromptEvalJob } = usePromptEvalRun();
   const {
     agentJob,
     agentScraping,
@@ -76,6 +80,7 @@ export function AgentScrapeQueueFloat() {
   const [stepsExpanded, setStepsExpanded] = useState(prefs.stepsExpanded);
   const displayJob = agentJob ?? prefs.lastJob;
   const displayStatus: AgentScrapeJob['status'] | 'idle' = displayJob?.status ?? 'idle';
+  const showPromptEval = promptEvalJob != null;
   const terminal =
     displayJob != null &&
     ['completed', 'failed', 'cancelled', 'timed_out'].includes(displayJob.status);
@@ -87,7 +92,13 @@ export function AgentScrapeQueueFloat() {
       ? Math.round((displayJob.progress.completed / displayJob.progress.total) * 100)
       : 0;
 
-  const panelHeight = minimized ? 48 : stepsExpanded && displayJob ? PANEL_H_EXPANDED : PANEL_H_MIN;
+  const panelHeight = minimized
+    ? 48
+    : showPromptEval
+      ? PANEL_H_PROMPT_EVAL
+      : stepsExpanded && displayJob
+        ? PANEL_H_EXPANDED
+        : PANEL_H_MIN;
 
   const onPositionChange = useCallback((pos: { x: number; y: number }) => {
     saveAgentQueuePrefs({ position: pos });
@@ -110,6 +121,10 @@ export function AgentScrapeQueueFloat() {
       setPrefs(prev => ({ ...prev, lastJob: agentJob, lastJobId: agentJob.id }));
     }
   }, [agentJob]);
+
+  useEffect(() => {
+    if (promptEvalRunning) setMinimized(false);
+  }, [promptEvalRunning]);
 
   const posStyle: React.CSSProperties = {
     left: position.x,
@@ -147,7 +162,7 @@ export function AgentScrapeQueueFloat() {
   return (
     <div
       style={posStyle}
-      className="fixed z-[100] rounded-xl border border-violet-200 bg-white shadow-2xl overflow-hidden flex flex-col"
+      className="fixed z-[100] rounded-xl border border-violet-200 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[min(90vh,520px)]"
       role="dialog"
       aria-label="Agent scrape queue"
     >
@@ -157,8 +172,19 @@ export function AgentScrapeQueueFloat() {
       >
         <GripHorizontal className="w-4 h-4 shrink-0 text-violet-300" />
         <Bot className="w-4 h-4 shrink-0" />
-        <span className="font-medium text-sm flex-1 truncate">Agent queue</span>
-        <span className="text-xs text-violet-200 shrink-0">{statusLabel(displayStatus)}</span>
+        <span className="font-medium text-sm flex-1 truncate">
+          {showPromptEval ? '30-day eval' : 'Agent queue'}
+        </span>
+        <span className="text-xs text-violet-200 shrink-0">
+          {showPromptEval
+            ? promptEvalJob?.status === 'running' || promptEvalJob?.status === 'queued'
+              ? 'Running'
+              : promptEvalJob?.status ?? '—'
+            : statusLabel(displayStatus)}
+        </span>
+        {(promptEvalRunning || agentScraping) && (
+          <Loader2 className="w-4 h-4 animate-spin shrink-0 text-violet-200" />
+        )}
         {displayJob && (
           <button
             type="button"
@@ -183,7 +209,11 @@ export function AgentScrapeQueueFloat() {
         </button>
       </div>
 
-      {!displayJob ? (
+      {showPromptEval && promptEvalJob && (
+        <PromptEvalJobFloatPanel job={promptEvalJob} />
+      )}
+
+      {!showPromptEval && !displayJob ? (
         <div className="px-3 py-3 text-xs text-slate-600 space-y-2">
           <p>No scrape yet. Open Agent mode and press Start.</p>
           {dataMode !== 'agent' && (
@@ -196,7 +226,7 @@ export function AgentScrapeQueueFloat() {
             </button>
           )}
         </div>
-      ) : (
+      ) : !showPromptEval && displayJob ? (
         <>
           <div className="px-3 py-2 bg-violet-50 border-b border-violet-100">
             <div className="h-1.5 rounded-full bg-violet-200 overflow-hidden">
@@ -320,6 +350,18 @@ export function AgentScrapeQueueFloat() {
             )}
           </div>
         </>
+      ) : null}
+
+      {showPromptEval && promptEvalJob && !promptEvalRunning && (
+        <div className="px-3 py-2 border-t border-slate-100 flex justify-end">
+          <button
+            type="button"
+            onClick={clearPromptEvalJob}
+            className="text-xs text-slate-600 hover:text-slate-900 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
     </div>
   );

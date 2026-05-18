@@ -3,6 +3,7 @@ import type {
   MarketDataMode,
   MarketDataSettings,
   NewsArticle,
+  QuoteDataMode,
   StockQuote,
 } from '@investai/shared';
 import { http, httpWithMeta } from '../../../shared/api/http';
@@ -11,10 +12,12 @@ export const marketApi = {
   getSettings: (probe = false) =>
     http<MarketDataSettings>(`/api/market/settings${probe ? '?probe=1' : ''}`),
 
-  setDataMode: (dataMode: MarketDataMode) =>
+  setDataMode: (dataMode: MarketDataMode, quoteDataMode?: QuoteDataMode) =>
     http<MarketDataSettings>('/api/market/settings', {
       method: 'PUT',
-      body: JSON.stringify({ dataMode }),
+      body: JSON.stringify(
+        quoteDataMode != null ? { dataMode, quoteDataMode } : { dataMode }
+      ),
     }),
 
   getStocks: (options?: {

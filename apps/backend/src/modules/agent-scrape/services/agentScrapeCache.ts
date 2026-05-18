@@ -5,6 +5,7 @@ import {
   deleteMemoryCacheByPrefix,
   getMemoryCached,
 } from '../../../utils/memoryCache.js';
+import { deleteAgentFirestoreCaches } from './agentFirestoreCache.js';
 
 const AGENT_PREFIX = 'agent-scrape:';
 const BULK_KEY = 'bulk';
@@ -50,6 +51,7 @@ export function splitSymbolBatches(symbols: string[], batchSize: number): string
 
 export function invalidateAgentScrapeCache(): void {
   deleteMemoryCacheByPrefix(AGENT_PREFIX);
+  void deleteAgentFirestoreCaches();
 }
 
 /** @deprecated use bulkCacheKey */

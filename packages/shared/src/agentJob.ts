@@ -29,6 +29,8 @@ export interface AgentScrapeJob {
   forceLive: boolean;
   /** When true, scrape 30-day OHLC via LLM instead of synthetic drift only */
   scrapeCharts?: boolean;
+  /** When true (default), quotes come from Live/Mock — job runs chart LLM steps only */
+  chartsOnly?: boolean;
   steps: AgentJobStep[];
   progress: { completed: number; total: number };
   startedAt: string;
