@@ -96,10 +96,13 @@ export {
 export {
   MARKET_STOCK_CACHE_HOURS,
   MARKET_STOCK_CACHE_MS,
+  MARKET_STOCK_STALE_MAX_MS,
   PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
 } from './marketStockCache.js';
 
 export type { MarketStockLocalBundle, PromptEvalGroundTruthPayload } from './marketStockCache.js';
+
+export type { PromptSuiteVersions } from './promptSuite.js';
 
 export type { AiUsageLimitStatus, AiUsageLimitsOverview, AiUsageTier } from './aiUsageLimit.js';
 

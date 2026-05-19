@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev -w @investai/backend\" \"npm run dev -w @investai/frontend\"",
-    "build": "npm run build -w @investai/shared && npm run build -w @investai/backend && npm run build -w @investai/frontend",
+    "build": "npm run build -w @investai/shared && npm run build -w @investai/prompts && npm run build -w @investai/backend && npm run build -w @investai/frontend",
     "build:frontend": "npm run build -w @investai/shared && npm run build -w @investai/frontend",
     "start": "npm run start -w @investai/backend",
     "test": "npm run test -w @investai/backend",

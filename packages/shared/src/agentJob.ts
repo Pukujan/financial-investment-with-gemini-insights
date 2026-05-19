@@ -2,6 +2,7 @@ import type { AgentScrapeUsage } from './agentScrape.js';
 import type { AiCostTier } from './aiEstimate.js';
 import type { AgentChartEvalRecord } from './chartEval.js';
 import type { AgentEstimateEvalRecord, AgentEstimateSnapshot } from './estimateEval.js';
+import type { PromptSuiteVersions } from './promptSuite.js';
 
 export type AgentJobStepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'failed';
 
@@ -43,4 +44,6 @@ export interface AgentScrapeJob {
   /** Actual vs estimate after completion */
   estimateEval?: AgentEstimateEvalRecord;
   chartEval?: AgentChartEvalRecord;
+  /** Resolved prompt template versions used for this job (registry in @investai/prompts). */
+  promptSuite?: PromptSuiteVersions;
 }

@@ -1,5 +1,6 @@
 import type { TimeSeriesData } from '@investai/shared';
 import { AGENT_CHART_TRADING_DAYS, lastTradingDayKeys } from '@investai/shared';
+import { resolveChartPrompt } from '@investai/prompts';
 import { env } from '../../../../config/env.js';
 import {
   callAiWithUsageFallback,
@@ -9,10 +10,6 @@ import {
 } from '../../../../utils/aiClient.js';
 
 const CHART_MAX_TOKENS = 2048;
-
-const SYSTEM_PROMPT = `You are a financial data agent. Return ONLY minified JSON (no markdown, no prose):
-{"symbol":"SYM","bars":[["YYYY-MM-DD",open,high,low,close],...]}
-Exactly ${AGENT_CHART_TRADING_DAYS} daily bars, oldest to newest. OHLC must be numbers.`;
 
 const EMPTY_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -135,21 +132,24 @@ function alignSeriesToTradingDays(
 async function scrapeChartSymbol(
   symbol: string,
   anchorPrice: number | undefined,
-  model?: string
+  model?: string,
+  options?: { ragContext?: string; promptVersion?: string }
 ): Promise<{ series: TimeSeriesData[]; usage: TokenUsage }> {
   const sym = symbol.toUpperCase();
-  const anchor =
-    anchorPrice != null && Number.isFinite(anchorPrice)
-      ? ` Last close near $${anchorPrice.toFixed(2)}.`
-      : '';
-
   const dates = TRADING_DAY_KEYS();
-  const dateList = dates.join(', ');
-  const prompt = `Generate daily OHLC for ${sym} on exactly these US equity session dates (oldest to newest): ${dateList}. Use each date as YYYY-MM-DD in the bars array.${anchor}`;
+  const { system, user } = resolveChartPrompt(
+    {
+      symbol: sym,
+      tradingDayKeys: dates,
+      anchorPrice,
+      ragContext: options?.ragContext,
+    },
+    options?.promptVersion
+  );
 
   const { text, usage } = await callAiWithUsageFallback(
-    prompt,
-    SYSTEM_PROMPT,
+    user,
+    system,
     CHART_MAX_TOKENS,
     model,
     env.agentScrapeBatchTimeoutMs
@@ -162,7 +162,11 @@ async function scrapeChartSymbol(
 export async function scrapeChartsWithAgent(
   symbols: string[],
   anchorPrices: Record<string, number>,
-  model?: string
+  model?: string,
+  options?: {
+    ragContextBySymbol?: Record<string, string>;
+    promptVersion?: string;
+  }
 ): Promise<{ seriesBySymbol: Record<string, TimeSeriesData[]>; usage: TokenUsage }> {
   const seriesBySymbol: Record<string, TimeSeriesData[]> = {};
   let usage = { ...EMPTY_USAGE };
@@ -172,7 +176,11 @@ export async function scrapeChartsWithAgent(
     const { series, usage: callUsage } = await scrapeChartSymbol(
       sym,
       anchorPrices[sym],
-      model
+      model,
+      {
+        ragContext: options?.ragContextBySymbol?.[sym],
+        promptVersion: options?.promptVersion,
+      }
     );
     seriesBySymbol[sym] = series;
     usage = mergeUsage(usage, callUsage);

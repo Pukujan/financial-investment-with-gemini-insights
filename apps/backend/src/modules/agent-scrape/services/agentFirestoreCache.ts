@@ -4,6 +4,7 @@ import { firestoreCollections, marketFirestoreTtlMs } from '../../../config/cach
 import {
   deleteFirestoreCache,
   readFirestoreCache,
+  readFirestoreCacheStale,
   writeFirestoreCache,
 } from '../../../utils/firestoreCache.js';
 
@@ -22,6 +23,18 @@ export async function readAgentBulkFromFirestore(): Promise<AgentBulkDoc | null>
     agentDocId(),
     marketFirestoreTtlMs
   );
+}
+
+export async function readAgentBulkStaleFromFirestore(
+  maxStaleMs: number
+): Promise<{ doc: AgentBulkDoc; timestamp: number } | null> {
+  const hit = await readFirestoreCacheStale<AgentBulkDoc>(
+    firestoreCollections.agentBulk,
+    agentDocId(),
+    maxStaleMs
+  );
+  if (!hit) return null;
+  return { doc: hit.data, timestamp: hit.timestamp };
 }
 
 export async function writeAgentBulkToFirestore(doc: AgentBulkDoc): Promise<void> {

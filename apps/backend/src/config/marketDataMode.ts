@@ -38,10 +38,13 @@ export function setQuoteDataMode(mode: QuoteDataMode): void {
 }
 
 export function updateMarketDataMode(mode: MarketDataMode): QuoteDataMode {
+  const prev = runtimeMode;
   if (mode === 'live' || mode === 'mock') {
     runtimeQuoteMode = mode;
   }
-  setMarketDataMode(mode);
+  const preserveCache =
+    (prev === 'live' && mode === 'agent') || (prev === 'agent' && mode === 'live');
+  setMarketDataMode(mode, { preserveCache });
   return runtimeQuoteMode;
 }
 

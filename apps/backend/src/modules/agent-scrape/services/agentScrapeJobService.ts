@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { formatRagContextBlock, getDefaultPromptSuite } from '@investai/prompts';
 import type { AgentScrapeJob, AgentJobStep, AiCostTier } from '@investai/shared';
 import type { StockQuote } from '@investai/shared';
 import { env } from '../../../config/env.js';
@@ -32,6 +33,7 @@ import {
   recordEstimateEval,
   snapshotFromTierEstimate,
 } from './estimateEvalService.js';
+import { retrieveRagForSymbols } from './ragService.js';
 
 const MAX_JOB_STEPS = 64;
 const jobs = new Map<string, AgentScrapeJob & { cancelRequested?: boolean }>();
@@ -130,6 +132,7 @@ export function createAgentScrapeJob(options: {
     startedAt: nowIso(),
     updatedAt: nowIso(),
     cancelRequested: false,
+    promptSuite: getDefaultPromptSuite(),
   };
 
   jobs.set(job.id, job);
@@ -179,10 +182,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function ragContextBySymbol(symbols: string[]): Promise<Record<string, string>> {
+  if (!env.agentScrapeRagEnabled || symbols.length === 0) return {};
+  const { chunks } = await retrieveRagForSymbols(symbols, 2);
+  const out: Record<string, string> = {};
+  for (const raw of symbols) {
+    const sym = raw.toUpperCase();
+    const symChunks = chunks.filter(c => c.symbol === sym);
+    const block = formatRagContextBlock(symChunks);
+    if (block) out[sym] = block;
+  }
+  return out;
+}
+
 async function runBatchWithRetry(
   batch: string[],
   modelId: string,
-  forceLive: boolean
+  forceLive: boolean,
+  promptVersion?: string
 ): Promise<{ quotes: StockQuote[]; usage: TokenUsage }> {
   const key = batchCacheKey(batch);
   if (!forceLive) {
@@ -200,7 +217,7 @@ async function runBatchWithRetry(
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      const result = await scrapeQuotesWithAgent(batch, modelId);
+      const result = await scrapeQuotesWithAgent(batch, modelId, { promptVersion });
       setMemoryCached(key, result.quotes);
       return { quotes: result.quotes, usage: result.usage };
     } catch (err) {
@@ -290,7 +307,12 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
       touch(job);
 
       try {
-        const { quotes, usage } = await runBatchWithRetry(batch, modelId, forceLive);
+        const { quotes, usage } = await runBatchWithRetry(
+          batch,
+          modelId,
+          forceLive,
+          job.promptSuite?.quoteScrape
+        );
         step.status = 'done';
         step.tokensUsed = usage.totalTokens;
         allQuotes.push(...quotes);
@@ -346,10 +368,15 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
           }
         }
 
+        const ragBySymbol = await ragContextBySymbol(batch);
         const { seriesBySymbol, usage } = await scrapeChartsWithAgent(
           batch,
           anchorPrices,
-          modelId
+          modelId,
+          {
+            ragContextBySymbol: ragBySymbol,
+            promptVersion: job.promptSuite?.chartScrape,
+          }
         );
         Object.assign(seriesLlm, seriesBySymbol);
         setMemoryCached(key, seriesBySymbol);
@@ -391,6 +418,7 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
       try {
         const newsKey = newsCacheKey();
         let newsUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+        const newsOpts = { promptVersion: job.promptSuite?.newsScrape };
 
         if (!forceLive) {
           const cachedNews = getMemoryCached<unknown[]>(newsKey, memoryCacheTtl.marketNewsMs);
@@ -401,7 +429,8 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
             const { articles, usage } = await scrapeNewsWithAgent(
               ['US equities', 'macro economy', 'earnings season'],
               10,
-              modelId
+              modelId,
+              newsOpts
             );
             setMemoryCached(newsKey, articles);
             void writeAgentNewsToFirestore(articles);
@@ -413,7 +442,8 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
           const { articles, usage } = await scrapeNewsWithAgent(
             ['US equities', 'macro economy', 'earnings season'],
             10,
-            modelId
+            modelId,
+            newsOpts
           );
           setMemoryCached(newsKey, articles);
           void writeAgentNewsToFirestore(articles);

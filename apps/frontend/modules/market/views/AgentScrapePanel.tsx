@@ -203,6 +203,17 @@ export function AgentScrapePanel() {
             )}
             <AgentCacheStatusBadge cache={cache} />
 
+            {agentPendingConfirm && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <p className="font-medium">Agent charts are stale</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  Chart data is older than 12 hours. Press <strong>Start</strong> below for a fresh
+                  LLM scrape — cached charts are still shown on the dashboard until you scrape
+                  again.
+                </p>
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-medium text-violet-800">Quote & news source</p>
               <div

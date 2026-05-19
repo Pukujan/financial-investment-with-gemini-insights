@@ -28,6 +28,7 @@ import {
 import type { Request } from 'express';
 import { firestoreCollections } from '../../../config/cache.js';
 import { getTierModelId } from '../../ai-estimate/services/modelTiers.js';
+import { getDefaultPromptSuite, resolvePromptVersion } from '@investai/prompts';
 import { resolvePromptEvalGroundTruth } from './promptEvalGroundTruth.js';
 import {
   loadEvalFromAllSources,
@@ -205,6 +206,7 @@ export async function runPromptEvalWithProgress(
       const { quotes, usage, reasoning } = await scrapeQuotesWithAgent(symbols, modelId, {
         ragContext,
         goldenHint,
+        promptVersion: options.promptVersion,
       });
 
       if (reasoning) hooks.onTierReasoning(tier, reasoning);
@@ -264,10 +266,15 @@ export async function runPromptEvalWithProgress(
   }
 
   const previous = history[0] ?? null;
+  const promptSuite = {
+    ...getDefaultPromptSuite(),
+    quoteScrape: resolvePromptVersion('quote-scrape', options.promptVersion),
+  };
   const experiment: PromptEvalExperiment = {
     id: experimentId,
     completedAt: new Date().toISOString(),
     promptVersion: options.promptVersion,
+    promptSuite,
     evalWindowDays: EVAL_WINDOW_DAYS,
     comparisonMode: '30d-eod',
     priceConvention: CHART_EOD_CONVENTION,

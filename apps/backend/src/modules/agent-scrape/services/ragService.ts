@@ -1,3 +1,4 @@
+import { formatRagContextBlock } from '@investai/prompts';
 import { mockNews, mockStocks } from '../../../data/mockData.js';
 import { firestoreCollections } from '../../../config/cache.js';
 import { readFirestoreCache, writeFirestoreCache } from '../../../utils/firestoreCache.js';
@@ -79,12 +80,7 @@ export async function retrieveRagForSymbols(
     picked.push(...hits);
   }
 
-  const contextBlock =
-    picked.length === 0
-      ? ''
-      : `Retrieved context (for grounding only — prices must align with golden Yahoo EOD when provided):\n${picked
-          .map(c => `[${c.id}] ${c.text}`)
-          .join('\n')}`;
+  const contextBlock = formatRagContextBlock(picked);
 
   return { chunks: picked, contextBlock };
 }

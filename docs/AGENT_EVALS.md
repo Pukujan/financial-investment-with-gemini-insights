@@ -316,10 +316,15 @@ sequenceDiagram
 
 **UI:** Timeline lists prompt versions with RAG badge and deviation delta. Selecting a run opens golden vs three tiers, tier bar charts, EOD line chart, and **RAG flow** panel on one screen.
 
+**Prompt registry:** `promptVersion` in the UI (e.g. `v-2026-05-19`) resolves to a template in `packages/prompts` (`quote-scrape` `2026-05-19`). Experiments store `promptSuite` with the resolved version. Catalog: `GET /api/agent-scrape/prompts`. See [PROMPT_ENGINEERING.md](./PROMPT_ENGINEERING.md).
+
+**Chart / estimate eval:** These dashboards measure job outcomes; they do **not** version or edit prompts. To improve charts, bump `chart-scrape` in `@investai/prompts` and re-run Agent **Start**.
+
 ---
 
 ## Related docs
 
+- [Prompt engineering](./PROMPT_ENGINEERING.md) — versioned templates, RAG, iteration workflow  
 - [Project scope](./PROJECT_SCOPE.md) — goals, golden dataset, RAG, tiers  
 - [Agent scrape mode](./AGENT_SCRAPE.md) — quotes, news, jobs  
 - [Cache architecture](./CACHE.md) — market vs eval storage  

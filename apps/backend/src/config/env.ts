@@ -88,6 +88,8 @@ export const env = {
     2,
     Math.max(0, parseInt(process.env.AGENT_SCRAPE_MAX_BATCH_RETRIES ?? '1', 10))
   ),
+  /** Inject RAG catalog/news context into chart (and quote) scrape prompts. */
+  agentScrapeRagEnabled: process.env.AGENT_SCRAPE_RAG !== 'false',
   /** Agent scrape + eval “primary” tier (defaults to OpenRouter primary) */
   agentModelStrong:
     process.env.AGENT_MODEL_STRONG ??

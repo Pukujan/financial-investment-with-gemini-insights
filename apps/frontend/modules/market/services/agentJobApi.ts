@@ -22,7 +22,7 @@ export const agentJobApi = {
     http<AgentScrapeJob>(`/api/agent-scrape/jobs/${id}`, { method: 'DELETE' }),
 
   loadChartCache: () =>
-    http<{ loaded: boolean; chartSymbols: number; cachedAt?: string }>(
+    http<{ loaded: boolean; chartSymbols: number; cachedAt?: string; stale?: boolean }>(
       '/api/agent-scrape/cache/load',
       { method: 'POST' }
     ),

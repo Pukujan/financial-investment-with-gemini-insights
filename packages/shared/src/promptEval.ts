@@ -1,4 +1,5 @@
 import type { AiCostTier } from './aiEstimate.js';
+import type { PromptSuiteVersions } from './promptSuite.js';
 import type { ChartDayComparison, ChartPriceConvention } from './tradingDays.js';
 
 /** Trading-day EOD window for golden comparison (not a single 1-day spot check). */
@@ -63,6 +64,8 @@ export interface PromptEvalExperiment {
   id: string;
   completedAt: string;
   promptVersion: string;
+  /** Resolved template versions for quote/chart/news (see docs/PROMPT_ENGINEERING.md). */
+  promptSuite?: PromptSuiteVersions;
   /** 30 trading-day EOD comparison vs Yahoo daily bars (new runs always set this). */
   evalWindowDays?: number;
   comparisonMode?: PromptEvalComparisonMode;

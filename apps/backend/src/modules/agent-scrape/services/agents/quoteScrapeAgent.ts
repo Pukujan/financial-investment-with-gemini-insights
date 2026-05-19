@@ -1,4 +1,5 @@
 import type { StockQuote } from '@investai/shared';
+import { resolveQuotePrompt } from '@investai/prompts';
 import { env } from '../../../../config/env.js';
 import {
   callAiWithUsageFallback,
@@ -7,27 +8,28 @@ import {
 } from '../../../../utils/aiClient.js';
 import { normalizeAgentQuote } from '../normalizeAgentQuote.js';
 
-const SYSTEM_PROMPT = `You are a financial data extraction agent. Extract the latest available stock quote data for the requested symbols.
-Respond ONLY with valid JSON in this shape:
-{"reasoning":"One short paragraph: how you aligned prices to golden reference and context.","quotes":[{"symbol":"AAPL","name":"Apple Inc.","price":178.5,"change":1.2,"changePercent":0.68,"high":180,"low":176,"open":177,"previousClose":177.3,"volume":"45M","sector":"Technology"}]}
-Use realistic recent US market prices. Include all numeric OHLC fields. volume as a string like "12.3M".`;
-
 export async function scrapeQuotesWithAgent(
   symbols: string[],
   model?: string,
-  options?: { ragContext?: string; goldenHint?: string }
+  options?: {
+    ragContext?: string;
+    goldenHint?: string;
+    promptVersion?: string;
+  }
 ): Promise<{ quotes: StockQuote[]; usage: TokenUsage; model: string; reasoning?: string }> {
   const want = new Set(symbols.map(s => s.toUpperCase()));
-  const goldenBlock = options?.goldenHint?.trim()
-    ? `\nGolden reference (Yahoo EOD — prefer last session close):\n${options.goldenHint}`
-    : '';
-  const ragBlock = options?.ragContext?.trim() ? `\n${options.ragContext}` : '';
-  const prompt = `Extract current stock quotes for: ${[...want].join(', ')}.
-Return one object per symbol in the quotes array.${goldenBlock}${ragBlock}`;
+  const { system, user } = resolveQuotePrompt(
+    {
+      symbols: [...want],
+      goldenHint: options?.goldenHint,
+      ragContext: options?.ragContext,
+    },
+    options?.promptVersion
+  );
 
   const { text, usage, model: usedModel } = await callAiWithUsageFallback(
-    prompt,
-    SYSTEM_PROMPT,
+    user,
+    system,
     4096,
     model,
     env.agentScrapeBatchTimeoutMs

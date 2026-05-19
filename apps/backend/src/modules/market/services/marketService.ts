@@ -66,7 +66,10 @@ import {
   isAgentScrapeConfigured,
   type AgentBulkCache,
 } from '../../agent-scrape/services/agentScrapeService.js';
-import { readAgentBulkFromFirestore } from '../../agent-scrape/services/agentFirestoreCache.js';
+import {
+  readAgentBulkFromFirestore,
+  readAgentBulkStaleFromFirestore,
+} from '../../agent-scrape/services/agentFirestoreCache.js';
 import { bulkFirestoreSlot, effectiveMarketCacheMode } from './marketCacheMode.js';
 import type { MarketBulkFirestoreSlot } from './marketCacheMode.js';
 import {
@@ -104,8 +107,92 @@ const BULK_STOCKS_KEY = 'bulk';
 
 const chartMetaBySymbol = new Map<
   string,
-  { chartSource?: string; syntheticChart?: boolean; chartNote?: string }
+  {
+    chartSource?: string;
+    syntheticChart?: boolean;
+    chartNote?: string;
+    chartStale?: boolean;
+    chartCachedAt?: string;
+  }
 >();
+
+function hasAgentChartSeries(agent: AgentBulkCache | null | undefined): boolean {
+  return Boolean(
+    agent?.seriesBySymbol && Object.values(agent.seriesBySymbol).some(s => s?.length)
+  );
+}
+
+function agentChartStaleNote(cachedAtIso: string): string {
+  return `Agent chart data is older than ${env.marketCacheTtlHours}h (saved ${cachedAtIso}). Run a fresh scrape in the Agent panel for updated LLM charts.`;
+}
+
+async function resolveAgentBulkWithAge(): Promise<{
+  agent: AgentBulkCache;
+  cachedAtMs: number;
+  stale: boolean;
+} | null> {
+  const ttlMs = memoryCacheTtl.marketQuoteMs;
+
+  const freshMem = getMemoryCached<AgentBulkCache>(agentBulkCacheKey(), ttlMs);
+  if (hasAgentChartSeries(freshMem)) {
+    const ts = getMemoryCachedAt(agentBulkCacheKey(), ttlMs);
+    if (ts != null) {
+      return { agent: freshMem!, cachedAtMs: ts, stale: false };
+    }
+  }
+
+  const staleMem = getMemoryCachedStale<AgentBulkCache>(agentBulkCacheKey(), STALE_BULK_MAX_MS);
+  if (hasAgentChartSeries(staleMem?.data)) {
+    return { agent: staleMem!.data, cachedAtMs: staleMem!.timestamp, stale: true };
+  }
+
+  const fsFresh = await readAgentBulkFromFirestore();
+  if (hasAgentChartSeries(fsFresh)) {
+    const agent: AgentBulkCache = {
+      quotes: fsFresh!.quotes,
+      seriesBySymbol: normalizeSeriesBySymbol(fsFresh!.seriesBySymbol),
+    };
+    setMemoryCached(agentBulkCacheKey(), agent);
+    return { agent, cachedAtMs: Date.now(), stale: false };
+  }
+
+  const fsStale = await readAgentBulkStaleFromFirestore(STALE_BULK_MAX_MS);
+  if (hasAgentChartSeries(fsStale?.doc)) {
+    const agent: AgentBulkCache = {
+      quotes: fsStale!.doc.quotes,
+      seriesBySymbol: normalizeSeriesBySymbol(fsStale!.doc.seriesBySymbol),
+    };
+    setMemoryCached(agentBulkCacheKey(), agent);
+    const ageMs = Date.now() - fsStale!.timestamp;
+    return {
+      agent,
+      cachedAtMs: fsStale!.timestamp,
+      stale: ageMs >= ttlMs,
+    };
+  }
+
+  return null;
+}
+
+function applyAgentChartMetaForBulk(
+  agent: AgentBulkCache,
+  cachedAtMs: number,
+  stale: boolean
+): void {
+  const cachedAt = new Date(cachedAtMs).toISOString();
+  const note = stale
+    ? agentChartStaleNote(cachedAt)
+    : '30-day chart from agent scrape cache.';
+  for (const symbol of Object.keys(agent.seriesBySymbol ?? {})) {
+    if (!agent.seriesBySymbol[symbol]?.length) continue;
+    chartMetaBySymbol.set(symbol.toUpperCase(), {
+      chartSource: AGENT_PROVIDER,
+      chartStale: stale,
+      chartCachedAt: cachedAt,
+      chartNote: note,
+    });
+  }
+}
 
 /** Catalog metadata only in mock mode — live quotes stay pure Tiingo. */
 function enrichQuote(quote: StockQuote): StockQuote {
@@ -171,26 +258,17 @@ export interface AgentChartCacheLoadResult {
   loaded: boolean;
   chartSymbols: number;
   cachedAt?: string;
+  stale?: boolean;
 }
 
 /** Hydrate agent LLM chart series from memory/Firestore into per-symbol timeseries keys. */
 export async function loadAgentChartCacheIntoMarket(): Promise<AgentChartCacheLoadResult> {
-  let agent = readAgentMemoryBulk();
-  if (!agent?.seriesBySymbol || Object.keys(agent.seriesBySymbol).length === 0) {
-    const fsBulk = await readAgentBulkFromFirestore();
-    if (fsBulk?.seriesBySymbol && Object.keys(fsBulk.seriesBySymbol).length > 0) {
-      agent = {
-        quotes: fsBulk.quotes,
-        seriesBySymbol: normalizeSeriesBySymbol(fsBulk.seriesBySymbol),
-      };
-      setMemoryCached(agentBulkCacheKey(), agent);
-    }
-  }
-
-  if (!agent?.seriesBySymbol) {
+  const resolved = await resolveAgentBulkWithAge();
+  if (!resolved || !hasAgentChartSeries(resolved.agent)) {
     return { loaded: false, chartSymbols: 0 };
   }
 
+  const { agent, cachedAtMs, stale } = resolved;
   const chartSymbols = Object.values(agent.seriesBySymbol).filter(s => s?.length).length;
   if (chartSymbols === 0) {
     return { loaded: false, chartSymbols: 0 };
@@ -203,12 +281,13 @@ export async function loadAgentChartCacheIntoMarket(): Promise<AgentChartCacheLo
     failed: 0,
   });
   hydrateChartSeriesFromBulk(bundle);
+  applyAgentChartMetaForBulk(agent, cachedAtMs, stale);
 
-  const cachedAtMs = getMemoryCachedAt(agentBulkCacheKey(), memoryCacheTtl.marketQuoteMs);
   return {
     loaded: true,
     chartSymbols,
-    cachedAt: cachedAtMs ? new Date(cachedAtMs).toISOString() : undefined,
+    cachedAt: new Date(cachedAtMs).toISOString(),
+    stale,
   };
 }
 
@@ -231,13 +310,24 @@ function hydrateChartSeriesFromBulk(bundle: BulkStocksCache): void {
   }
 }
 
+/** Live/Mock quote bulk while dashboard is in agent mode — never use for LLM charts. */
+function isAgentQuoteOnlyBulk(bundle: BulkStocksCache): boolean {
+  if (getMarketDataMode() !== 'agent') return false;
+  const p = bundle.meta.provider;
+  return p !== AGENT_PROVIDER && p !== 'agent';
+}
+
 function hydrateBulkCache(bundle: BulkStocksCache): void {
   const normalized: BulkStocksCache = {
     ...bundle,
-    seriesBySymbol: normalizeSeriesBySymbol(bundle.seriesBySymbol),
+    seriesBySymbol: isAgentQuoteOnlyBulk(bundle)
+      ? {}
+      : normalizeSeriesBySymbol(bundle.seriesBySymbol),
   };
   setMemoryCached(bulkStocksCacheKey(), normalized);
-  hydrateChartSeriesFromBulk(normalized);
+  if (!isAgentQuoteOnlyBulk(bundle)) {
+    hydrateChartSeriesFromBulk(normalized);
+  }
   for (const stock of normalized.stocks) {
     setMemoryCached(
       cacheKeyForMode(cacheKey('market', 'quote', stock.symbol.toUpperCase())),
@@ -421,11 +511,29 @@ function getFreshBulkCache(): BulkStocksCache | null {
   return null;
 }
 
-async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
-  const mem = getFreshBulkCache();
-  if (mem) return mem;
+async function resolveAgentChartBulkOnly(): Promise<BulkStocksCache | null> {
+  const resolved = await resolveAgentBulkWithAge();
+  if (!resolved || !hasAgentChartSeries(resolved.agent)) {
+    return null;
+  }
+  applyAgentChartMetaForBulk(resolved.agent, resolved.cachedAtMs, resolved.stale);
+  return agentBulkToMarketBulk(resolved.agent, {
+    dataMode: 'agent',
+    provider: AGENT_PROVIDER,
+    fetched: resolved.agent.quotes.length,
+    failed: 0,
+  });
+}
 
+async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   const mode = getMarketDataMode();
+  if (mode === 'agent') {
+    return resolveAgentChartBulkOnly();
+  }
+
+  const mem = getFreshBulkCache();
+  if (mem && !isAgentQuoteOnlyBulk(mem)) return mem;
+
   const bulkSlot = bulkFirestoreSlot(mode, getQuoteDataMode());
   if (bulkSlot === 'live' || bulkSlot === 'mock' || bulkSlot === 'agent-live' || bulkSlot === 'agent-mock') {
     const fsDoc = await readBulkStocksFromFirestore(bulkSlot);
@@ -444,26 +552,6 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
     if (fsStale?.bundle.stocks.length) {
       hydrateBulkCache(fsStale.bundle);
       return getFreshBulkCache();
-    }
-  }
-
-  if (mode === 'agent') {
-    const agentFs = await readAgentBulkFromFirestore();
-    if (agentFs?.quotes.length) {
-      const bundle = agentBulkToMarketBulk(
-        {
-          quotes: agentFs.quotes,
-          seriesBySymbol: agentFs.seriesBySymbol,
-        },
-        {
-          dataMode: 'agent',
-          provider: AGENT_PROVIDER,
-          fetched: agentFs.quotes.length,
-          failed: 0,
-        }
-      );
-      hydrateBulkCache(bundle);
-      return bundle;
     }
   }
 
@@ -707,7 +795,6 @@ export async function getStockQuote(symbol: string): Promise<StockQuote> {
 }
 
 export async function getAllStocks(options?: {
-  refresh?: boolean;
   forceLive?: boolean;
   agentTier?: import('@investai/shared').AiCostTier;
   /** When agent delegates to live/mock fetch, persist under agent-* Firestore docs. */
@@ -721,10 +808,6 @@ export async function getAllStocks(options?: {
     options?.firestoreBulkSlot ?? bulkFirestoreSlot(mode, getQuoteDataMode());
   const cacheMeta = { cacheTtlHours: env.marketCacheTtlHours };
 
-  if (options?.refresh && !options?.forceLive) {
-    invalidateMarketMemoryCache();
-  }
-
   if (options?.forceLive) {
     invalidateAgentScrapeCache();
   }
@@ -732,14 +815,13 @@ export async function getAllStocks(options?: {
   logMarketStocks('request', {
     dataMode: mode,
     quoteDataMode: getQuoteDataMode(),
-    refresh: Boolean(options?.refresh),
     forceLive: Boolean(options?.forceLive),
     bulkKey: bulkStocksCacheKey(),
     firestoreConfigured: env.isFirebaseConfigured(),
     instanceId: env.firebaseAppInstanceId,
   });
 
-  if (mode === 'live' && !options?.refresh) {
+  if (mode === 'live') {
     const bulkKey = bulkStocksCacheKey();
     const cached = getMemoryCached<BulkStocksCache>(bulkKey, memoryCacheTtl.marketQuoteMs);
     if (cached) {
@@ -814,7 +896,7 @@ export async function getAllStocks(options?: {
   if (mode === 'agent') {
     const quoteMode = getQuoteDataMode();
 
-    if (!options?.refresh && quoteMode === 'live') {
+    if (quoteMode === 'live') {
       const bulkKey = bulkStocksCacheKey();
       const memCached = getMemoryCached<BulkStocksCache>(bulkKey, memoryCacheTtl.marketQuoteMs);
       if (memCached?.stocks.length) {
@@ -897,19 +979,20 @@ export async function getAllStocks(options?: {
     const { stocks, meta } = await withTemporaryQuoteMode(() =>
       getAllStocks({
         ...options,
-        refresh: options?.refresh,
         firestoreBulkSlot: bulkFirestoreSlot('agent', quoteMode),
       })
     );
     const quoteLabel = quoteMode === 'live' ? 'Live' : 'Mock';
+    const { seriesBySymbol: _dropSeries, ...metaWithoutSeries } = meta;
     return {
       stocks,
       meta: {
-        ...meta,
+        ...metaWithoutSeries,
         dataMode: 'agent',
+        seriesBySymbol: {},
         warnings: [
           ...(meta.warnings ?? []),
-          `Quotes from ${quoteLabel}. Use Agent panel for 30-day LLM chart jobs.`,
+          `Quotes from ${quoteLabel}. Charts only from Agent panel scrape jobs (not stored with quotes).`,
         ],
       },
     };
@@ -974,9 +1057,10 @@ export async function getAllStocks(options?: {
     ...cacheMeta,
   };
 
+  const quoteOnlyAgentSlot = firestoreSlot.startsWith('agent-');
   const bulkBundle: BulkStocksCache = {
     stocks: stockResults,
-    seriesBySymbol,
+    seriesBySymbol: quoteOnlyAgentSlot ? {} : seriesBySymbol,
     meta,
   };
   hydrateBulkCache(bulkBundle);
@@ -1140,17 +1224,31 @@ export async function getTimeSeriesDaily(symbol: string): Promise<TimeSeriesData
   }
 
   if (mode === 'agent') {
-    const bulk = await resolveBulkCacheForCharts();
-    const preloaded = getPreloadedTimeSeries(symbol, bulk);
-    if (preloaded) {
-      setMemoryCached(key, preloaded);
-      chartMetaBySymbol.set(symbol.toUpperCase(), {
-        chartSource: AGENT_PROVIDER,
-        chartNote: '30-day chart from agent job cache.',
-      });
-      return preloaded;
+    const sym = symbol.toUpperCase();
+    let resolved = await resolveAgentBulkWithAge();
+    if (!resolved) {
+      await loadAgentChartCacheIntoMarket();
+      resolved = await resolveAgentBulkWithAge();
     }
-    return withTemporaryQuoteMode(() => getTimeSeriesDaily(symbol));
+    const series = resolved?.agent.seriesBySymbol?.[sym];
+    if (series?.length && resolved) {
+      setMemoryCached(key, series);
+      const cachedAt = new Date(resolved.cachedAtMs).toISOString();
+      chartMetaBySymbol.set(sym, {
+        chartSource: AGENT_PROVIDER,
+        chartStale: resolved.stale,
+        chartCachedAt: cachedAt,
+        chartNote: resolved.stale
+          ? agentChartStaleNote(cachedAt)
+          : '30-day chart from agent scrape job (LLM).',
+      });
+      return series;
+    }
+    throw new AppError(
+      `No agent chart for ${symbol}. Start a 30-day chart scrape job in Agent mode (home tab).`,
+      503,
+      'MARKET_CHART_NOT_PRELOADED'
+    );
   }
 
   assertLiveMarketConfigured();

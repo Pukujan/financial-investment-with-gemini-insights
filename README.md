@@ -40,10 +40,11 @@ https://water-matrix-96907145.figma.site
 
 ### 📐 Agent scrape evals (Estimate, Chart & Prompt)
 - **Estimate eval** — compares pre-scrape token/cost **estimates** to **actual** OpenRouter usage per job
-- **Chart eval** — compares agent **quotes** to chart **EOD closes** and optional **Yahoo** daily bars
-- **Prompt eval** — runs **three LLM tiers** vs **Yahoo golden** with optional **RAG**; timeline tracks prompt-version improvement
+- **Chart eval** — compares agent **quotes** to chart **EOD closes** and optional **Yahoo** daily bars (metrics only — does not change prompts)
+- **Prompt eval** — runs **three LLM tiers** vs **Yahoo golden** with optional **RAG**; timeline tracks **versioned** prompts (`@investai/prompts`)
+- **Prompt registry** — dated templates for quote/chart/news/insights/prediction; `GET /api/agent-scrape/prompts`
 - Clickable **run timelines** in the UI; detail panels show deviation charts, golden tables, and RAG flow on one screen
-- Product scope: [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md) · technical detail: [docs/AGENT_EVALS.md](./docs/AGENT_EVALS.md)
+- Study guide: [docs/PROMPT_ENGINEERING.md](./docs/PROMPT_ENGINEERING.md) · scope: [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md) · evals: [docs/AGENT_EVALS.md](./docs/AGENT_EVALS.md)
 
 ## 🚀 Quick Start
 
@@ -97,8 +98,10 @@ https://water-matrix-96907145.figma.site
 ## Documentation
 
 - [AGENTS.md](./AGENTS.md) — **fast orientation for humans & coding agents**
+- [Prompt engineering](./docs/PROMPT_ENGINEERING.md) — **versioned prompts, RAG, eval iteration** (study guide)
 - [Project scope](./docs/PROJECT_SCOPE.md) — golden eval, 3-tier LLM comparison, RAG, prompt iteration
 - [Agent scrape evals](./docs/AGENT_EVALS.md) — **estimate, chart & prompt eval dashboards** (full detail + diagrams)
+- [Dev log 2026-05-19](./docs/DEV_LOG_2026-05-19.md) — prompt registry + chart RAG on jobs
 - [How it works now](./docs/HOW_IT_WORKS_NOW.md) — market modes, Tiingo/Yahoo, caching
 - [Cache architecture](./docs/CACHE.md) — memory, Firestore, eval disk storage
 - [Codebase map](./docs/CODEBASE_MAP.md) — file-by-file index
@@ -108,7 +111,7 @@ https://water-matrix-96907145.figma.site
 
 ## Agent scrape evals (overview)
 
-In **Agent** market mode, each completed scrape job can produce two analytics records. Open the app views **Estimate eval** and **Chart eval** from the header.
+In **Agent** market mode you get scrape jobs plus three eval surfaces. Open **Estimate eval**, **Chart eval**, and **Prompt eval** from the header. Prompt templates live in `packages/prompts` — see [docs/PROMPT_ENGINEERING.md](./docs/PROMPT_ENGINEERING.md).
 
 ### System context
 
@@ -120,14 +123,22 @@ flowchart TB
     AGENT[Agent OpenRouter scrape]
   end
 
-  subgraph evals [Eval analytics - Agent jobs only]
+  subgraph evals [Eval analytics]
     EST[Estimate eval<br/>tokens and cost]
     CHART[Chart eval<br/>quotes vs EOD series]
+    PROMPT[Prompt eval<br/>3-tier vs Yahoo + RAG]
+  end
+
+  subgraph prompts [Prompt registry]
+    REG["@investai/prompts"]
   end
 
   AGENT --> JOB[AgentScrapeJob]
+  REG --> AGENT
+  REG --> PROMPT
   JOB --> EST
   JOB --> CHART
+  PROMPT --> REG
 
   subgraph storage [Persistence]
     DISK[(Server .data JSON)]

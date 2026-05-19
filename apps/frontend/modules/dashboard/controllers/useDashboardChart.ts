@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import type { StockPrediction, StockQuote } from '@investai/shared';
+import type { MarketDataMode, StockPrediction, StockQuote, TimeSeriesData } from '@investai/shared';
 import { ApiError } from '../../../shared/api/http';
 import { dashboardApi } from '../services/dashboardApi';
+import { useMarketData } from '../../market/controllers/MarketDataProvider';
+import {
+  agentChartStaleMessage,
+  loadAgentChartSeries,
+  saveAgentChartSeries,
+} from '../../market/utils/agentChartStorage';
 
 export type ChartRange = '30d' | '7d' | '3d';
 
@@ -10,7 +16,8 @@ export interface ChartPoint {
   price: number;
 }
 
-export function useDashboardChart(_stocks: StockQuote[]) {
+export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMode) {
+  const { requestAgentRefreshPrompt } = useMarketData();
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [loadingChart, setLoadingChart] = useState(false);
@@ -35,7 +42,40 @@ export function useDashboardChart(_stocks: StockQuote[]) {
     setChartNote(null);
 
     try {
-      const { data: timeSeries, meta } = await dashboardApi.getTimeSeries(symbol);
+      let timeSeries: TimeSeriesData[] | null = null;
+      let meta: Record<string, unknown> | undefined;
+
+      if (dataMode === 'agent') {
+        const local = loadAgentChartSeries(symbol);
+        if (local?.freshness === 'fresh') {
+          timeSeries = local.series;
+          meta = {
+            chartNote: '30-day chart from agent scrape (browser cache, <12h).',
+            chartSource: 'openrouter-agent',
+          };
+        } else if (local?.freshness === 'stale' && local.cachedAt) {
+          timeSeries = local.series;
+          meta = {
+            chartNote: agentChartStaleMessage(local.cachedAt),
+            chartStale: true,
+            chartSource: 'openrouter-agent',
+          };
+          requestAgentRefreshPrompt();
+        }
+      }
+
+      if (!timeSeries?.length) {
+        const res = await dashboardApi.getTimeSeries(symbol);
+        timeSeries = res.data;
+        meta = res.meta;
+        if (dataMode === 'agent' && timeSeries.length) {
+          saveAgentChartSeries(symbol, timeSeries);
+          if (meta?.chartStale === true) {
+            requestAgentRefreshPrompt();
+          }
+        }
+      }
+
       const note = meta?.chartNote;
       setChartNote(typeof note === 'string' ? note : null);
       setChartData(

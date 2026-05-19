@@ -30,12 +30,16 @@ import { persistEstimateEvalRecord } from '../utils/estimateEvalStorage';
 import { persistChartEvalRecord } from '../utils/chartEvalStorage';
 import { logStockCacheFromApi } from '../utils/marketStockCacheLog';
 import {
-  clearMarketStockBundle,
+  getAgentChartBundleFreshness,
+  loadAgentChartBundle,
+} from '../utils/agentChartStorage';
+import {
   isMarketStockBundleFresh,
   loadMarketStockBundle,
   saveMarketStockBundle,
   type MarketStockStorageTarget,
 } from '../utils/marketStockStorage';
+import { MARKET_STOCK_CACHE_HOURS } from '@investai/shared';
 import type { TimeSeriesData } from '@investai/shared';
 
 const JOB_POLL_MS = 1500;
@@ -82,10 +86,14 @@ interface MarketDataContextType {
   setAgentPanelExpanded: (open: boolean) => void;
   selectedAgentTier: AiCostTier;
   setSelectedAgentTier: (tier: AiCostTier) => void;
-  refreshMarketData: (
-    forceRefresh?: boolean,
-    options?: { forceLive?: boolean; agentTier?: AiCostTier; silent?: boolean }
-  ) => Promise<void>;
+  refreshMarketData: (options?: {
+    forceLive?: boolean;
+    agentTier?: AiCostTier;
+    silent?: boolean;
+    forMode?: MarketDataMode;
+    quoteDataMode?: QuoteDataMode;
+    keepAgentPanel?: boolean;
+  }) => Promise<void>;
   setDataMode: (mode: MarketDataMode) => Promise<void>;
   setQuoteDataMode: (mode: QuoteDataMode) => Promise<void>;
   startAgentScrape: (forceLive: boolean) => Promise<void>;
@@ -272,18 +280,15 @@ export function MarketDataProvider({
   );
 
   const refreshMarketData = useCallback(
-    async (
-      forceRefresh = false,
-      options?: {
-        forceLive?: boolean;
-        agentTier?: AiCostTier;
-        silent?: boolean;
-        /** Override stale dataMode closure (e.g. right after switching modes) */
-        forMode?: MarketDataMode;
-        quoteDataMode?: QuoteDataMode;
-        keepAgentPanel?: boolean;
-      }
-    ) => {
+    async (options?: {
+      forceLive?: boolean;
+      agentTier?: AiCostTier;
+      silent?: boolean;
+      /** Override stale dataMode closure (e.g. right after switching modes) */
+      forMode?: MarketDataMode;
+      quoteDataMode?: QuoteDataMode;
+      keepAgentPanel?: boolean;
+    }) => {
       const effectiveMode = options?.forMode ?? dataMode;
       const effectiveQuoteMode = options?.quoteDataMode ?? quoteDataMode;
       const storage = stockStorageTarget(effectiveMode, effectiveQuoteMode);
@@ -298,15 +303,11 @@ export function MarketDataProvider({
       }
 
       try {
-        if (forceRefresh) {
-          clearMarketStockBundle(storage);
-        }
-
         const quoteModesNeedCache =
           effectiveMode === 'live' || effectiveMode === 'agent';
         let usedLocalCache = false;
 
-        if (quoteModesNeedCache && !forceRefresh) {
+        if (quoteModesNeedCache) {
           const local = loadMarketStockBundle(storage);
           if (local && isMarketStockBundleFresh(local)) {
             usedLocalCache = true;
@@ -327,7 +328,7 @@ export function MarketDataProvider({
         const useAgent =
           effectiveMode === 'agent' || options?.forceLive || options?.agentTier != null;
 
-        if (usedLocalCache && !forceRefresh) {
+        if (usedLocalCache) {
           const mode = effectiveMode;
           const mergedWarnings: string[] = [];
           await fetchNewsForMode(mode, mergedWarnings, tier);
@@ -338,7 +339,6 @@ export function MarketDataProvider({
         }
 
         const stockResult = await marketApi.getStocks({
-          refresh: forceRefresh,
           forceLive: options?.forceLive,
           agentTier: useAgent ? tier : undefined,
         });
@@ -371,7 +371,7 @@ export function MarketDataProvider({
                 ? stockResult.meta.cachedAt
                 : new Date().toISOString(),
             stocks: stockResult.data,
-            seriesBySymbol,
+            seriesBySymbol: effectiveMode === 'agent' ? {} : seriesBySymbol,
             provider:
               typeof stockResult.meta?.provider === 'string'
                 ? stockResult.meta.provider
@@ -400,12 +400,11 @@ export function MarketDataProvider({
         if (!options?.keepAgentPanel) {
           setAgentPendingConfirm(false);
         }
-        await loadSettings(forceRefresh);
+        await loadSettings(false);
       } catch (err) {
         console.error('[market-stocks] fetch failed', {
           silent: Boolean(options?.silent),
           forMode: options?.forMode ?? dataMode,
-          refresh: forceRefresh,
           error: err,
         });
         if (!options?.silent) {
@@ -428,7 +427,12 @@ export function MarketDataProvider({
   const finishAgentJob = useCallback(
     async (job: AgentScrapeJob) => {
       if (job.usage) setAgentScrapeUsage(job.usage);
-      await refreshMarketData(false, {
+      try {
+        await agentJobApi.loadChartCache();
+      } catch (err) {
+        console.warn('[agent-charts] server chart cache hydrate failed', err);
+      }
+      await refreshMarketData({
         agentTier: job.tier,
         silent: true,
         forMode: 'agent',
@@ -574,6 +578,38 @@ export function MarketDataProvider({
     }
   }, [pollAgentJob]);
 
+  const promptAgentChartStale = useCallback((cachedAt?: string) => {
+    setAgentPendingConfirm(true);
+    setAgentPanelExpanded(true);
+    const when = cachedAt ? new Date(cachedAt).toLocaleString() : 'a while ago';
+    setWarnings(prev => {
+      const msg = `Agent chart data is older than ${MARKET_STOCK_CACHE_HOURS}h (saved ${when}). Run Start in the Agent panel for a fresh LLM scrape.`;
+      return prev.includes(msg) ? prev : [...prev, msg];
+    });
+  }, []);
+
+  const requestAgentRefreshPrompt = useCallback(() => {
+    promptAgentChartStale();
+    void loadAgentEstimate();
+  }, [loadAgentEstimate, promptAgentChartStale]);
+
+  const checkAgentChartStaleness = useCallback(async () => {
+    const localFreshness = getAgentChartBundleFreshness(loadAgentChartBundle());
+    if (localFreshness === 'stale') {
+      promptAgentChartStale(loadAgentChartBundle()?.cachedAt);
+      return;
+    }
+
+    try {
+      const result = await agentJobApi.loadChartCache();
+      if (result.stale && result.cachedAt) {
+        promptAgentChartStale(result.cachedAt);
+      }
+    } catch {
+      /* no server chart cache yet */
+    }
+  }, [promptAgentChartStale]);
+
   const initAgentMode = useCallback(async () => {
     setError(null);
     setErrorCode(null);
@@ -594,7 +630,7 @@ export function MarketDataProvider({
     }
 
     try {
-      await refreshMarketData(false, {
+      await refreshMarketData({
         silent: true,
         forMode: 'agent',
         quoteDataMode,
@@ -608,21 +644,17 @@ export function MarketDataProvider({
         'Could not load live quotes on this device. Use Refresh or confirm the same API URL and Firebase as device A.',
       ]);
     }
-  }, [loadAgentEstimate, quoteDataMode, refreshMarketData, restoreAgentJob]);
+
+    await checkAgentChartStaleness();
+  }, [checkAgentChartStaleness, loadAgentEstimate, quoteDataMode, refreshMarketData, restoreAgentJob]);
 
   const loadFromAgentCache = useCallback(async () => {
     setAgentPendingConfirm(false);
-    await refreshMarketData(false, { forceLive: false });
+    await refreshMarketData({ forceLive: false });
   }, [refreshMarketData]);
 
   const requestAgentEstimate = useCallback(async () => {
     await loadAgentEstimate();
-  }, [loadAgentEstimate]);
-
-  const requestAgentRefreshPrompt = useCallback(() => {
-    setAgentPendingConfirm(true);
-    setAgentPanelExpanded(true);
-    void loadAgentEstimate();
   }, [loadAgentEstimate]);
 
   const setQuoteDataMode = useCallback(
@@ -634,7 +666,7 @@ export function MarketDataProvider({
       try {
         const settings = await marketApi.setDataMode('agent', mode);
         applySettings(settings);
-        await refreshMarketData(true, { forMode: 'agent', quoteDataMode: mode, keepAgentPanel: true });
+        await refreshMarketData({ forMode: 'agent', quoteDataMode: mode, keepAgentPanel: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to update quote source');
       } finally {
@@ -652,8 +684,6 @@ export function MarketDataProvider({
       setError(null);
       setErrorCode(null);
       setWarnings([]);
-      setStocks([]);
-      setNews([]);
       setAgentScrapeUsage(null);
       setAgentPendingConfirm(false);
       setAgentPanelExpanded(false);
@@ -677,7 +707,7 @@ export function MarketDataProvider({
           await initAgentMode();
         } else {
           setAgentPanelExpanded(false);
-          await refreshMarketData(true, {
+          await refreshMarketData({
             forMode: mode,
             quoteDataMode: settings.quoteDataMode,
           });
@@ -718,7 +748,7 @@ export function MarketDataProvider({
       if (mode === 'agent') {
         await initAgentMode();
       } else {
-        await refreshMarketData(false, { forMode: mode });
+        await refreshMarketData({ forMode: mode });
       }
     })();
   }, [initAgentMode, loadSettings, refreshMarketData]);

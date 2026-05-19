@@ -25,11 +25,13 @@ import {
   postEval,
   postJob,
   postLoadChartCache,
+  getPromptRegistry,
 } from '../controllers/agentScrapeController.js';
 
 const router = Router();
 
 router.get('/status', getStatus);
+router.get('/prompts', getPromptRegistry);
 router.get('/sources', getAgentSources);
 router.get('/estimate', getEstimate);
 router.post('/cache/load', postLoadChartCache);

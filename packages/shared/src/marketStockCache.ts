@@ -5,6 +5,9 @@ export const MARKET_STOCK_CACHE_HOURS = 12;
 
 export const MARKET_STOCK_CACHE_MS = MARKET_STOCK_CACHE_HOURS * 60 * 60 * 1000;
 
+/** Max age to still serve stale agent/live bulk from server or browser (7 days). */
+export const MARKET_STOCK_STALE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Browser localStorage bundle for live or agent quote caches (separate keys per mode). */
 export interface MarketStockLocalBundle {
   cachedAt: string;

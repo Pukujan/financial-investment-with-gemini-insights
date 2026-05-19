@@ -3,8 +3,9 @@
 Read this first. Humans should start at [README.md](./README.md).
 
 **Canonical behavior reference:** [docs/HOW_IT_WORKS_NOW.md](./docs/HOW_IT_WORKS_NOW.md)  
-**Today's changes:** [docs/DEV_LOG_2026-05-18.md](./docs/DEV_LOG_2026-05-18.md)  
-**System + prompt engineering:** [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md)
+**Today's changes:** [docs/DEV_LOG_2026-05-19.md](./docs/DEV_LOG_2026-05-19.md)  
+**Prompt engineering study guide:** [docs/PROMPT_ENGINEERING.md](./docs/PROMPT_ENGINEERING.md)  
+**System scope:** [docs/PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md)
 
 ## What this app does
 
@@ -17,8 +18,11 @@ Financial dashboard: stock quotes and charts (**Tiingo** in live mode), mock or 
 | `apps/frontend/` | React + Vite UI — **only place with `views/`** |
 | `apps/backend/` | REST API — routes → controllers → services (JSON, no views) |
 | `packages/shared/` | Shared TypeScript types |
+| `packages/prompts/` | **Versioned LLM prompt registry** (quote/chart/news/insights/prediction) |
 | `docs/HOW_IT_WORKS_NOW.md` | **How it works now** (Tiingo, strict live, errors) |
 | `docs/PROJECT_SCOPE.md` | **Full capabilities** — golden/Yahoo ground truth, RAG, eval UI proof, predictions |
+| `docs/PROMPT_ENGINEERING.md` | **Prompt versions, RAG, eval iteration** (study guide) |
+| `docs/DEV_LOG_2026-05-19.md` | Dev log — `@investai/prompts`, chart RAG on jobs |
 | `docs/DEV_LOG_2026-05-18.md` | Dev log — agent charts-only, dual eval tabs, usage limits |
 | `docs/AGENT_EVALS.md` | **Eval dashboards** (estimate, chart, prompt — timeline UI, storage) |
 | `docs/DEV_LOG_2026-05-16.md` | Detailed dev log for 16 May 2026 |
@@ -62,6 +66,7 @@ Verify: `curl http://localhost:3001/api/health` → `data.env.missing` should be
 | GET | `/api/market/stocks` | market (`?refresh=1`) |
 | GET | `/api/market/news` | market |
 | GET | `/api/market/stocks/:symbol/timeseries` | market |
+| GET | `/api/agent-scrape/prompts` | agent-scrape (prompt catalog + latest versions) |
 | GET/POST | `/api/agent-scrape/golden`, `/eval` | agent-scrape (static regression golden) |
 | GET | `/api/agent-scrape/usage-limits` | agent-scrape (`agent-run` + `prompt-test` buckets) |
 | GET/POST | `/api/agent-scrape/eval/prompt` | agent-scrape (3-tier vs Yahoo golden) |

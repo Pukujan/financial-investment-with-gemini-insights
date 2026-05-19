@@ -12,7 +12,7 @@ import { usePortfolio } from '@/modules/portfolio';
 import { useDashboardChart, type ChartRange } from '../controllers/useDashboardChart';
 
 export function Dashboard() {
-  const { stocks, loading } = useMarketData();
+  const { stocks, loading, dataMode } = useMarketData();
   const { portfolioValue } = usePortfolio();
   const [selectedSector, setSelectedSector] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -30,7 +30,7 @@ export function Dashboard() {
     loadingPrediction,
     loadChartData,
     loadAIPrediction,
-  } = useDashboardChart(stocks);
+  } = useDashboardChart(stocks, dataMode);
 
   const enrichedStocks = stocks.map(stock => ({
     ...stock,

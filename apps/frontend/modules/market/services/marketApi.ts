@@ -20,13 +20,8 @@ export const marketApi = {
       ),
     }),
 
-  getStocks: (options?: {
-    refresh?: boolean;
-    forceLive?: boolean;
-    agentTier?: AiCostTier;
-  }) => {
+  getStocks: (options?: { forceLive?: boolean; agentTier?: AiCostTier }) => {
     const params = new URLSearchParams();
-    if (options?.refresh) params.set('refresh', '1');
     if (options?.forceLive) params.set('forceLive', '1');
     if (options?.agentTier) params.set('agentTier', options.agentTier);
     const qs = params.toString();

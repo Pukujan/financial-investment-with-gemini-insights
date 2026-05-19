@@ -98,18 +98,6 @@ export function saveMarketStockBundle(
   }
 }
 
-export function clearMarketStockBundle(target: MarketStockStorageTarget): void {
-  const key = resolveStorageKey(target);
-  if (!key) return;
-
-  try {
-    localStorage.removeItem(key);
-    console.info('[market-stocks] localStorage cleared', { key });
-  } catch {
-    /* ignore */
-  }
-}
-
 export function buildGroundTruthFromLocalBundle(
   symbols: string[]
 ): PromptEvalGroundTruthPayload | null {

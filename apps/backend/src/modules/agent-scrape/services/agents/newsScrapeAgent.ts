@@ -1,4 +1,5 @@
 import type { NewsArticle } from '@investai/shared';
+import { resolveNewsPrompt } from '@investai/prompts';
 import { env } from '../../../../config/env.js';
 import {
   callAiWithUsageFallback,
@@ -6,22 +7,17 @@ import {
   type TokenUsage,
 } from '../../../../utils/aiClient.js';
 
-const SYSTEM_PROMPT = `You are a financial news extraction agent. Summarize recent market-relevant news headlines.
-Respond ONLY with valid JSON:
-{"articles":[{"title":"...","summary":"...","source":"...","category":"market","sentiment":"positive|neutral|negative","time_published":"ISO-8601","url":"https://..."}]}
-Generate 3-5 plausible recent headlines. sentiment must be positive, neutral, or negative.`;
-
 export async function scrapeNewsWithAgent(
   topics: string[],
   limit = 5,
-  model?: string
+  model?: string,
+  options?: { promptVersion?: string }
 ): Promise<{ articles: NewsArticle[]; usage: TokenUsage; model: string }> {
-  const prompt = `Extract ${limit} recent financial news items related to: ${topics.join(', ')}.
-Use realistic headline style. url can be "#" if unknown.`;
+  const { system, user } = resolveNewsPrompt({ topics, limit }, options?.promptVersion);
 
   const { text, usage, model: usedModel } = await callAiWithUsageFallback(
-    prompt,
-    SYSTEM_PROMPT,
+    user,
+    system,
     4096,
     model,
     env.agentScrapeBatchTimeoutMs

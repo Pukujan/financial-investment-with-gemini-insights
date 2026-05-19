@@ -60,7 +60,15 @@ import {
   mergeEstimateEvalRecords,
   syncEstimateEvalFromClient,
 } from '../services/estimateEvalService.js';
+import { getPromptCatalog, PROMPT_LATEST } from '@investai/prompts';
 import { getRagLogsForExperiment } from '../../../utils/evalPersistence.js';
+
+export const getPromptRegistry = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, {
+    latest: PROMPT_LATEST,
+    catalog: getPromptCatalog(),
+  });
+});
 
 export const getAgentSources = asyncHandler(async (_req: Request, res: Response) => {
   const symbols = getAgentSymbols();

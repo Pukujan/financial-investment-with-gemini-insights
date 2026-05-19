@@ -8,10 +8,9 @@ import { getMarketDataMode } from '../../../config/marketDataMode.js';
 import * as marketService from '../services/marketService.js';
 
 export const getStocks = asyncHandler(async (req: Request, res: Response) => {
-  const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
   const forceLive = req.query.forceLive === '1' || req.query.forceLive === 'true';
   const agentTier = parseAiCostTier(req.query.agentTier) as AiCostTier | undefined;
-  const { stocks, meta } = await marketService.getAllStocks({ refresh, forceLive, agentTier });
+  const { stocks, meta } = await marketService.getAllStocks({ forceLive, agentTier });
   sendSuccess(res, stocks, 200, { count: stocks.length, ...meta });
 });
 

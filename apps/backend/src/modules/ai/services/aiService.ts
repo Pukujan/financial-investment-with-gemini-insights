@@ -1,4 +1,5 @@
 import type { AIInsights, EnrichedStockInput } from '@investai/shared';
+import { resolveInsightsPrompt, resolvePredictionPrompt } from '@investai/prompts';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { callAiWithFallback, parseJsonFromText } from '../../../utils/aiClient.js';
 import { env } from '../../../config/env.js';
@@ -33,10 +34,22 @@ export async function generateAIInsights(
     );
   }
 
-  const prompt = buildInsightsPrompt(stockData, newsData);
+  const stockLines = stockData
+    .map(
+      s =>
+        `${s.symbol} (${s.name}): $${s.price}, Change: ${s.change > 0 ? '+' : ''}${s.change.toFixed(2)} (${((s.change / s.price) * 100).toFixed(2)}%), P/E: ${s.pe}, Market Cap: ${s.marketCap}`
+    )
+    .join('\n');
+  const newsBlock = newsData
+    ? `Recent News:\n${newsData
+        .slice(0, 5)
+        .map(n => `- ${n.title}: ${n.summary} [${n.sentiment}]`)
+        .join('\n')}`
+    : '';
+  const { system, user } = resolveInsightsPrompt({ stockLines, newsBlock });
 
   try {
-    const content = await callAiWithFallback(prompt);
+    const content = await callAiWithFallback(user, system);
     const insights = parseJsonFromText<AIInsights>(content);
     validateAIInsights(insights);
     return insights;
@@ -50,32 +63,6 @@ export async function generateAIInsights(
     }
     return generateMockInsights(stockData);
   }
-}
-
-function buildInsightsPrompt(
-  stockData: EnrichedStockInput[],
-  newsData?: Array<{ title: string; summary: string; sentiment: string }>
-): string {
-  return `You are a financial analyst AI. Analyze the following stock data and news, then provide investment insights in JSON format.
-
-Stock Data:
-${stockData
-  .map(
-    s =>
-      `${s.symbol} (${s.name}): $${s.price}, Change: ${s.change > 0 ? '+' : ''}${s.change.toFixed(2)} (${((s.change / s.price) * 100).toFixed(2)}%), P/E: ${s.pe}, Market Cap: ${s.marketCap}`
-  )
-  .join('\n')}
-
-${
-  newsData
-    ? `Recent News:\n${newsData
-        .slice(0, 5)
-        .map(n => `- ${n.title}: ${n.summary} [${n.sentiment}]`)
-        .join('\n')}`
-    : ''
-}
-
-Provide a JSON response with recommendations, trends, risks, portfolio, and stats. Generate 2-3 of each. Respond with ONLY valid JSON.`;
 }
 
 function generateMockInsights(stockData: EnrichedStockInput[]): AIInsights {
@@ -153,14 +140,15 @@ export async function generateStockPrediction(
     return generateFallbackPrediction(symbol, currentPrice, historicalData);
   }
 
-  const prompt = `Analyze 30-day data for ${symbol} and predict next week price. Historical:\n${historicalData.map(d => `${d.date}: $${d.price}`).join('\n')}\nCurrent: $${currentPrice}\nRespond JSON: {"predictedPrice":number,"confidence":number,"reasoning":string,"factors":string[]}`;
+  const historicalLines = historicalData.map(d => `${d.date}: $${d.price}`).join('\n');
+  const { system, user } = resolvePredictionPrompt({
+    symbol,
+    historicalLines,
+    currentPrice,
+  });
 
   try {
-    const content = await callAiWithFallback(
-      prompt,
-      'You are a financial analyst. Respond with valid JSON only.',
-      1024
-    );
+    const content = await callAiWithFallback(user, system, 1024);
     const parsed = parseJsonFromText<{
       predictedPrice: number;
       confidence: number;
@@ -179,7 +167,8 @@ export async function generateStockPrediction(
       factors: parsed.factors,
       timestamp: Date.now(),
     };
-  } catch {
+  } catch (error) {
+    console.error('AI prediction failed:', error);
     return generateFallbackPrediction(symbol, currentPrice, historicalData);
   }
 }
@@ -189,14 +178,10 @@ function generateFallbackPrediction(
   currentPrice: number,
   historicalData: Array<{ date: string; price: number }>
 ): import('@investai/shared').StockPrediction {
-  const recentPrices = historicalData.slice(-7).map(d => d.price);
-  const avgChange =
-    recentPrices.reduce((acc, price, i) => {
-      if (i === 0) return 0;
-      return acc + (price - recentPrices[i - 1]);
-    }, 0) / Math.max(recentPrices.length - 1, 1);
-
-  const predictedPrice = currentPrice + avgChange * 7;
+  const recent = historicalData.slice(-5);
+  const avgRecent =
+    recent.reduce((sum, d) => sum + d.price, 0) / Math.max(recent.length, 1);
+  const predictedPrice = avgRecent * 1.02;
 
   return {
     symbol,
@@ -204,9 +189,9 @@ function generateFallbackPrediction(
     predictedPrice,
     priceChange: predictedPrice - currentPrice,
     priceChangePercent: ((predictedPrice - currentPrice) / currentPrice) * 100,
-    confidence: 45,
-    reasoning: 'Prediction based on 7-day moving average trend.',
-    factors: ['Recent momentum', 'Historical volatility', 'Market trend'],
+    confidence: 60,
+    reasoning: 'Based on recent average price trend (fallback calculation).',
+    factors: ['Recent price momentum', 'Historical average'],
     timestamp: Date.now(),
   };
 }
