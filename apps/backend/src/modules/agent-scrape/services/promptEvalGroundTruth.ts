@@ -48,7 +48,7 @@ export async function resolvePromptEvalGroundTruth(
 
     if (golden.length === symbols.length) {
       logMarketStocks('prompt-eval-ground-truth', {
-        source: client.source,
+        groundTruthClientSource: client.source,
         symbolCount: golden.length,
         cachedAt: client.cachedAt,
       });
