@@ -49,8 +49,10 @@ import {
   fetchYahooTimeSeries,
   probeYahooProvider,
   quoteFromYahooQuotes,
+  seedYahooChartCache,
   YAHOO_PROVIDER,
   timeSeriesFromYahooQuotes,
+  type YahooChartQuote,
 } from './yahooProvider.js';
 import { bulkCacheKey as agentBulkCacheKey } from '../../agent-scrape/services/agentScrapeCache.js';
 import {
@@ -380,6 +382,32 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   }
 
   return null;
+}
+
+function chartQuotesFromTimeSeries(series: TimeSeriesData[]): YahooChartQuote[] {
+  return series.map(bar => ({
+    date: new Date(`${bar.timestamp}T00:00:00.000Z`),
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume,
+  }));
+}
+
+/**
+ * Yahoo golden for evals: per-symbol TTL cache → market bulk preload → API.
+ */
+export async function resolveYahooChartQuotes(symbol: string): Promise<YahooChartQuote[]> {
+  const sym = symbol.trim().toUpperCase();
+  const bulk = await resolveBulkCacheForCharts();
+  const series = getPreloadedTimeSeries(sym, bulk);
+  if (series?.length) {
+    const quotes = chartQuotesFromTimeSeries(series);
+    seedYahooChartCache(sym, quotes);
+    return quotes;
+  }
+  return fetchYahooChartQuotes(symbol);
 }
 
 function getPreloadedTimeSeries(symbol: string, bulk?: BulkStocksCache | null): TimeSeriesData[] | null {

@@ -15,7 +15,7 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey'],
 });
 
-type ChartQuote = {
+export type YahooChartQuote = {
   date: Date;
   open: number | null;
   high: number | null;
@@ -23,6 +23,8 @@ type ChartQuote = {
   close: number | null;
   volume: number | null;
 };
+
+type ChartQuote = YahooChartQuote;
 
 const chartInFlight = new Map<string, Promise<ChartQuote[]>>();
 
@@ -53,6 +55,12 @@ async function fetchYahooChartQuotesOnce(symbol: string): Promise<ChartQuote[]> 
   }
 
   return quotes;
+}
+
+/** Warm per-symbol Yahoo cache (e.g. from market bulk preload). */
+export function seedYahooChartCache(symbol: string, quotes: YahooChartQuote[]): void {
+  if (!quotes.length) return;
+  setMemoryCached(yahooChartCacheKey(symbol), quotes);
 }
 
 export async function fetchYahooChartQuotes(symbol: string): Promise<ChartQuote[]> {
