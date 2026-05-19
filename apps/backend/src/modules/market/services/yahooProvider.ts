@@ -1,7 +1,9 @@
 import type { StockQuote, TimeSeriesData } from '@investai/shared';
 import YahooFinance from 'yahoo-finance2';
+import { memoryCacheTtl } from '../../../config/cache.js';
 import { env } from '../../../config/env.js';
 import { formatVolume } from '../../../utils/formatVolume.js';
+import { cacheKey, getMemoryCached, setMemoryCached } from '../../../utils/memoryCache.js';
 
 /** Node port of [yfinance](https://github.com/ranaroussi/yfinance) — same Yahoo data via yahoo-finance2. */
 export const YAHOO_PROVIDER = 'yahoo' as const;
@@ -23,6 +25,10 @@ type ChartQuote = {
 };
 
 const chartInFlight = new Map<string, Promise<ChartQuote[]>>();
+
+function yahooChartCacheKey(symbol: string): string {
+  return cacheKey('market', 'yahoo-chart', symbol.trim().toUpperCase());
+}
 
 function periodStart(): Date {
   const d = new Date();
@@ -51,12 +57,21 @@ async function fetchYahooChartQuotesOnce(symbol: string): Promise<ChartQuote[]> 
 
 export async function fetchYahooChartQuotes(symbol: string): Promise<ChartQuote[]> {
   const key = symbol.trim().toUpperCase();
+  const memKey = yahooChartCacheKey(key);
+  const cached = getMemoryCached<ChartQuote[]>(memKey, memoryCacheTtl.marketTimeSeriesMs);
+  if (cached) return cached;
+
   const existing = chartInFlight.get(key);
   if (existing) return existing;
 
-  const request = fetchYahooChartQuotesOnce(symbol).finally(() => {
-    chartInFlight.delete(key);
-  });
+  const request = fetchYahooChartQuotesOnce(symbol)
+    .then(quotes => {
+      setMemoryCached(memKey, quotes);
+      return quotes;
+    })
+    .finally(() => {
+      chartInFlight.delete(key);
+    });
   chartInFlight.set(key, request);
   return request;
 }

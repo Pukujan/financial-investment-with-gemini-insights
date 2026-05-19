@@ -65,6 +65,7 @@ import {
   type AgentBulkCache,
 } from '../../agent-scrape/services/agentScrapeService.js';
 import { readAgentBulkFromFirestore } from '../../agent-scrape/services/agentFirestoreCache.js';
+import { effectiveMarketCacheMode } from './marketCacheMode.js';
 import { normalizeSeriesBySymbol } from './marketSeriesUtils.js';
 import type {
   BulkStocksCache,
@@ -115,7 +116,7 @@ function enrichQuote(quote: StockQuote): StockQuote {
 }
 
 function cacheKeyForMode(baseKey: string): string {
-  return `${baseKey}:${getMarketDataMode()}`;
+  return `${baseKey}:${effectiveMarketCacheMode(getMarketDataMode(), getQuoteDataMode())}`;
 }
 
 function bulkStocksCacheKey(): string {
@@ -236,7 +237,10 @@ async function tryStaleBulkCache(warning: string): Promise<{
     };
   }
 
-  const fsStale = await readBulkStocksStaleFromFirestore('live', STALE_BULK_MAX_MS);
+  const fsStale = await readBulkStocksStaleFromFirestore(
+    effectiveMarketCacheMode(getMarketDataMode(), getQuoteDataMode()),
+    STALE_BULK_MAX_MS
+  );
   if (!fsStale) return null;
 
   const hit = bulkCacheHit(
@@ -332,8 +336,9 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   if (mem) return mem;
 
   const mode = getMarketDataMode();
-  if (mode === 'live' || mode === 'agent') {
-    const fsDoc = await readBulkStocksFromFirestore(mode);
+  const quoteCacheMode = effectiveMarketCacheMode(mode, getQuoteDataMode());
+  if (quoteCacheMode === 'live' || quoteCacheMode === 'mock') {
+    const fsDoc = await readBulkStocksFromFirestore(quoteCacheMode);
     if (fsDoc) {
       const { lastUpdated, createdAt: _c, ...bundle } = fsDoc as BulkStocksCache & {
         lastUpdated?: number;
