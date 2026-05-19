@@ -41,6 +41,26 @@ export function isNewsCached(): boolean {
   return Boolean(getMemoryCached(newsCacheKey(), memoryCacheTtl.marketNewsMs));
 }
 
+export function readAgentBulkMemory(): {
+  quotes: unknown[];
+  seriesBySymbol: Record<string, unknown[]>;
+} | null {
+  return (
+    getMemoryCached<{ quotes: unknown[]; seriesBySymbol: Record<string, unknown[]> }>(
+      bulkCacheKey(),
+      memoryCacheTtl.marketQuoteMs
+    ) ?? null
+  );
+}
+
+/** Symbols with non-empty 30-day series in agent bulk memory cache. */
+export function countSymbolsWithChartSeries(
+  symbols: string[],
+  seriesBySymbol: Record<string, { length: number }[] | undefined>
+): number {
+  return symbols.filter(s => (seriesBySymbol[s.toUpperCase()]?.length ?? 0) > 0).length;
+}
+
 export function splitSymbolBatches(symbols: string[], batchSize: number): string[][] {
   const batches: string[][] = [];
   for (let i = 0; i < symbols.length; i += batchSize) {

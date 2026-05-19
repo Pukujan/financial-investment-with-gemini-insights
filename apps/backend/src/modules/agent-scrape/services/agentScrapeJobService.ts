@@ -82,7 +82,6 @@ function chartStepLabel(symbols: string[]): string {
 export function createAgentScrapeJob(options: {
   tier: AiCostTier;
   forceLive: boolean;
-  scrapeCharts?: boolean;
   chartsOnly?: boolean;
   anchorQuotes?: StockQuote[];
 }): AgentScrapeJob {
@@ -98,9 +97,7 @@ export function createAgentScrapeJob(options: {
   const quoteBatches = chartsOnly
     ? []
     : splitSymbolBatches(symbols, env.agentScrapeBatchSize);
-  const chartBatches = options.scrapeCharts
-    ? splitSymbolBatches(symbols, env.agentScrapeChartBatchSize)
-    : [];
+  const chartBatches = splitSymbolBatches(symbols, env.agentScrapeChartBatchSize);
   const reservedSteps = chartBatches.length + (chartsOnly ? 0 : 1);
   const maxQuoteBatches = Math.min(quoteBatches.length, MAX_JOB_STEPS - reservedSteps);
 
@@ -126,7 +123,7 @@ export function createAgentScrapeJob(options: {
     status: 'queued',
     tier: options.tier,
     forceLive: options.forceLive,
-    scrapeCharts: options.scrapeCharts !== false,
+    scrapeCharts: true,
     chartsOnly,
     steps,
     progress: { completed: 0, total: steps.length },
@@ -235,7 +232,6 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
 
   try {
     const preEstimate = await estimateAgentScrape(getAgentSymbols(), {
-      scrapeCharts: job.scrapeCharts,
       chartsOnly: job.chartsOnly !== false,
     });
     const snapshot = snapshotFromTierEstimate(preEstimate, job.tier);
@@ -321,71 +317,69 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
 
     const seriesLlm: Record<string, import('@investai/shared').TimeSeriesData[]> = {};
 
-    if (job.scrapeCharts) {
-      const chartSteps = job.steps.filter(s => s.id.startsWith('chart-batch-'));
-      const anchorPrices = Object.fromEntries(
-        allQuotes.map(q => [q.symbol.toUpperCase(), q.price])
-      );
+    const chartSteps = job.steps.filter(s => s.id.startsWith('chart-batch-'));
+    const anchorPrices = Object.fromEntries(
+      allQuotes.map(q => [q.symbol.toUpperCase(), q.price])
+    );
 
-      for (let i = 0; i < chartSteps.length; i++) {
-        if (job.cancelRequested || jobTimedOut(startedMs)) break;
+    for (let i = 0; i < chartSteps.length; i++) {
+      if (job.cancelRequested || jobTimedOut(startedMs)) break;
 
-        const step = chartSteps[i];
-        const batch = step.symbols ?? [];
-        step.status = 'running';
-        touch(job);
+      const step = chartSteps[i];
+      const batch = step.symbols ?? [];
+      step.status = 'running';
+      touch(job);
 
-        const key = chartBatchCacheKey(batch);
-        try {
-          if (!forceLive) {
-            const cached = getMemoryCached<Record<string, import('@investai/shared').TimeSeriesData[]>>(
-              key,
-              memoryCacheTtl.marketQuoteMs
-            );
-            if (cached) {
-              Object.assign(seriesLlm, cached);
-              step.status = 'skipped';
-              step.tokensUsed = 0;
-              touch(job);
-              continue;
-            }
-          }
-
-          const { seriesBySymbol, usage } = await scrapeChartsWithAgent(
-            batch,
-            anchorPrices,
-            modelId
+      const key = chartBatchCacheKey(batch);
+      try {
+        if (!forceLive) {
+          const cached = getMemoryCached<Record<string, import('@investai/shared').TimeSeriesData[]>>(
+            key,
+            memoryCacheTtl.marketQuoteMs
           );
-          Object.assign(seriesLlm, seriesBySymbol);
-          setMemoryCached(key, seriesBySymbol);
-          step.status = 'done';
-          step.tokensUsed = usage.totalTokens;
-          chartTokensUsed += usage.totalTokens;
-          totalUsage = mergeUsage(totalUsage, usage);
-          if (usage.totalTokens > 0) liveBatches += 1;
-          else cachedBatches += 1;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Chart batch failed';
-          const fallback: Record<string, import('@investai/shared').TimeSeriesData[]> = {};
-          for (const sym of batch) {
-            const upper = sym.toUpperCase();
-            const quote = allQuotes.find(q => q.symbol.toUpperCase() === upper);
-            if (quote) fallback[upper] = timeSeriesFromQuote(quote);
-          }
-          if (Object.keys(fallback).length > 0) {
-            Object.assign(seriesLlm, fallback);
-            step.status = 'done';
-            step.error = `LLM charts failed (${message}); used quote-based synthetic series`;
-          } else {
-            step.status = 'failed';
-            step.error = message;
+          if (cached) {
+            Object.assign(seriesLlm, cached);
+            step.status = 'skipped';
+            step.tokensUsed = 0;
+            touch(job);
+            continue;
           }
         }
-        touch(job);
 
-        if (i < chartSteps.length - 1 && env.agentScrapeBatchDelayMs > 0) {
-          await sleep(env.agentScrapeBatchDelayMs);
+        const { seriesBySymbol, usage } = await scrapeChartsWithAgent(
+          batch,
+          anchorPrices,
+          modelId
+        );
+        Object.assign(seriesLlm, seriesBySymbol);
+        setMemoryCached(key, seriesBySymbol);
+        step.status = 'done';
+        step.tokensUsed = usage.totalTokens;
+        chartTokensUsed += usage.totalTokens;
+        totalUsage = mergeUsage(totalUsage, usage);
+        if (usage.totalTokens > 0) liveBatches += 1;
+        else cachedBatches += 1;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Chart batch failed';
+        const fallback: Record<string, import('@investai/shared').TimeSeriesData[]> = {};
+        for (const sym of batch) {
+          const upper = sym.toUpperCase();
+          const quote = allQuotes.find(q => q.symbol.toUpperCase() === upper);
+          if (quote) fallback[upper] = timeSeriesFromQuote(quote);
         }
+        if (Object.keys(fallback).length > 0) {
+          Object.assign(seriesLlm, fallback);
+          step.status = 'done';
+          step.error = `LLM charts failed (${message}); used quote-based synthetic series`;
+        } else {
+          step.status = 'failed';
+          step.error = message;
+        }
+      }
+      touch(job);
+
+      if (i < chartSteps.length - 1 && env.agentScrapeBatchDelayMs > 0) {
+        await sleep(env.agentScrapeBatchDelayMs);
       }
     }
 
@@ -440,7 +434,7 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     for (const q of allQuotes) {
       const sym = q.symbol.toUpperCase();
       seriesBySymbol[sym] =
-        job.scrapeCharts && seriesLlm[sym]?.length ? seriesLlm[sym]! : seriesSynthetic[sym]!;
+        seriesLlm[sym]?.length ? seriesLlm[sym]! : seriesSynthetic[sym]!;
     }
 
     const normalizedSeries = normalizeSeriesBySymbol(seriesBySymbol);
@@ -466,8 +460,8 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
       tier: job.tier,
       modelId,
       actualCostUsd,
-      chartMode: job.scrapeCharts ? 'llm' : 'synthetic',
-      chartsScraped: job.scrapeCharts === true,
+      chartMode: 'llm',
+      chartsScraped: true,
       chartTokensUsed,
     };
 

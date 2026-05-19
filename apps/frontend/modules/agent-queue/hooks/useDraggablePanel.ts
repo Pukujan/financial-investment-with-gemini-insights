@@ -38,19 +38,16 @@ export function useDraggablePanel({
     setPosition(initialPosition);
   }, [initialPosition.x, initialPosition.y]);
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if ((e.target as HTMLElement).closest('button')) return;
-      dragging.current = true;
-      dragOffset.current = {
-        x: e.clientX - positionRef.current.x,
-        y: e.clientY - positionRef.current.y,
-      };
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      e.preventDefault();
-    },
-    []
-  );
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragging.current = true;
+    dragOffset.current = {
+      x: e.clientX - positionRef.current.x,
+      y: e.clientY - positionRef.current.y,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, []);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {

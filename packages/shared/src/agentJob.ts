@@ -27,7 +27,7 @@ export interface AgentScrapeJob {
   status: AgentJobStatus;
   tier: AiCostTier;
   forceLive: boolean;
-  /** When true, scrape 30-day OHLC via LLM instead of synthetic drift only */
+  /** Always true for new jobs — 30-day LLM OHLC is required (legacy records may omit). */
   scrapeCharts?: boolean;
   /** When true (default), quotes come from Live/Mock — job runs chart LLM steps only */
   chartsOnly?: boolean;

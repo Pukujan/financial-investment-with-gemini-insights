@@ -24,6 +24,7 @@ import {
   listGolden,
   postEval,
   postJob,
+  postLoadChartCache,
 } from '../controllers/agentScrapeController.js';
 
 const router = Router();
@@ -31,6 +32,7 @@ const router = Router();
 router.get('/status', getStatus);
 router.get('/sources', getAgentSources);
 router.get('/estimate', getEstimate);
+router.post('/cache/load', postLoadChartCache);
 router.post('/jobs', postJob);
 router.get('/jobs/active', getActiveJob);
 router.get('/jobs/:id', getJob);

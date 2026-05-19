@@ -13,10 +13,13 @@ import { buildAgentScrapeTokenPlan } from './operations/agentScrapeTokens.js';
 
 export async function estimateAgentScrape(
   symbols: string[],
-  options?: { scrapeCharts?: boolean; chartsOnly?: boolean }
+  options?: { chartsOnly?: boolean }
 ): Promise<AiOperationEstimate> {
   const plan = buildAgentScrapeTokenPlan(symbols, options);
-  const { live, cached } = countLiveRequests(plan.batches, plan.newsCached);
+  const { live, cached } = countLiveRequests(plan.batches, plan.newsCached, {
+    chartsOnly: plan.chartsOnly,
+    chartBatches: plan.chartBatches,
+  });
 
   const tiers: TierEstimate[] = await Promise.all(
     AI_COST_TIERS.map(async tier => {
@@ -41,9 +44,12 @@ export async function estimateAgentScrape(
     symbolCount: plan.symbolCount,
     batchCount: plan.batchCount,
     batchSize: plan.batchSize,
-    quotesFullyCached: plan.quotesFullyCached,
+    quotesFullyCached: plan.chartsOnly ? plan.chartsFullyCached : plan.quotesFullyCached,
     newsCached: plan.newsCached,
     batches: plan.batches,
+    chartsOnly: plan.chartsOnly,
+    chartsFullyCached: plan.chartsFullyCached,
+    chartBatches: plan.chartBatches,
     cache: buildAgentCacheInfo(plan),
     tiers,
     pricingFetchedAt: getCatalogFetchedAt(),
