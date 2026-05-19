@@ -10,6 +10,7 @@ import {
   readFirestoreCacheStale,
   writeFirestoreCache,
 } from '../../../utils/firestoreCache.js';
+import { logMarketStocks } from './marketCacheLog.js';
 import type { BulkStocksCache, NewsCacheBundle } from './marketCacheTypes.js';
 
 function marketDocId(mode: MarketDataMode): string {
@@ -19,21 +20,77 @@ function marketDocId(mode: MarketDataMode): string {
 export async function readBulkStocksFromFirestore(
   mode: MarketDataMode
 ): Promise<BulkStocksCache | null> {
-  return readFirestoreCache<BulkStocksCache>(
+  const docId = marketDocId(mode);
+  if (!env.isFirebaseConfigured()) {
+    logMarketStocks('firestore-read-skip', {
+      reason: 'firebase-not-configured',
+      collection: firestoreCollections.marketBulk,
+      docId,
+    });
+    return null;
+  }
+
+  const fresh = await readFirestoreCache<BulkStocksCache>(
     firestoreCollections.marketBulk,
-    marketDocId(mode),
+    docId,
     marketFirestoreTtlMs
   );
+  if (fresh?.stocks?.length) {
+    logMarketStocks('firestore-read-ok', {
+      source: 'firestore-fresh',
+      docId,
+      stockCount: fresh.stocks.length,
+      lastUpdated: (fresh as BulkStocksCache & { lastUpdated?: number }).lastUpdated,
+    });
+    return fresh;
+  }
+
+  const staleProbe = await readFirestoreCacheStale<BulkStocksCache>(
+    firestoreCollections.marketBulk,
+    docId,
+    marketFirestoreTtlMs * 2
+  );
+  if (staleProbe) {
+    const ageMs = Date.now() - staleProbe.timestamp;
+    logMarketStocks('firestore-read-expired', {
+      docId,
+      ageMs,
+      ttlMs: marketFirestoreTtlMs,
+      stockCount: staleProbe.data.stocks?.length ?? 0,
+      reason: ageMs >= marketFirestoreTtlMs ? 'past-ttl' : 'empty-or-missing-stocks',
+    });
+  } else {
+    logMarketStocks('firestore-read-miss', {
+      docId,
+      reason: 'document-missing-or-read-denied',
+    });
+  }
+
+  return null;
 }
 
 export async function writeBulkStocksToFirestore(
   mode: MarketDataMode,
   bundle: BulkStocksCache
 ): Promise<void> {
-  await writeFirestoreCache(firestoreCollections.marketBulk, marketDocId(mode), {
+  const docId = marketDocId(mode);
+  if (!env.isFirebaseConfigured()) {
+    logMarketStocks('firestore-write-skip', {
+      reason: 'firebase-not-configured',
+      docId,
+      stockCount: bundle.stocks.length,
+    });
+    return;
+  }
+  await writeFirestoreCache(firestoreCollections.marketBulk, docId, {
     stocks: bundle.stocks,
     seriesBySymbol: bundle.seriesBySymbol,
     meta: bundle.meta,
+  });
+  logMarketStocks('firestore-write-ok', {
+    docId,
+    stockCount: bundle.stocks.length,
+    seriesSymbols: Object.keys(bundle.seriesBySymbol ?? {}).length,
   });
 }
 

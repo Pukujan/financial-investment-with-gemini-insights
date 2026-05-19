@@ -26,6 +26,14 @@ import { agentJobApi } from '../services/agentJobApi';
 import { loadAgentQueuePrefs, persistAgentJob } from '../../agent-queue/utils/agentQueueStorage';
 import { persistEstimateEvalRecord } from '../utils/estimateEvalStorage';
 import { persistChartEvalRecord } from '../utils/chartEvalStorage';
+import { logStockCacheFromApi } from '../utils/marketStockCacheLog';
+import {
+  clearMarketStockBundle,
+  isMarketStockBundleFresh,
+  loadMarketStockBundle,
+  saveMarketStockBundle,
+} from '../utils/marketStockStorage';
+import type { TimeSeriesData } from '@investai/shared';
 
 const JOB_POLL_MS = 1500;
 const TERMINAL_JOB_STATUSES = new Set([
@@ -284,9 +292,45 @@ export function MarketDataProvider({
       }
 
       try {
+        if (forceRefresh) {
+          clearMarketStockBundle();
+        }
+
+        const quoteModesNeedCache =
+          effectiveMode === 'live' || effectiveMode === 'agent';
+        let usedLocalCache = false;
+
+        if (quoteModesNeedCache && !forceRefresh) {
+          const local = loadMarketStockBundle();
+          if (local && isMarketStockBundleFresh(local)) {
+            usedLocalCache = true;
+            setStocks(local.stocks);
+            setLastUpdated(new Date(local.cachedAt));
+            logStockCacheFromApi('localStorage-hit', {
+              cacheSource: 'localStorage',
+              fromCache: true,
+              cachedAt: local.cachedAt,
+              provider: local.provider,
+              cacheNote: 'Fresh browser cache (<12h). Skipping stock API unless stale.',
+            }, local.stocks.length);
+            if (!options?.silent) setLoading(false);
+          }
+        }
+
         const tier = options?.agentTier ?? selectedAgentTier;
         const useAgent =
           effectiveMode === 'agent' || options?.forceLive || options?.agentTier != null;
+
+        if (usedLocalCache && !forceRefresh) {
+          const mode = effectiveMode;
+          const mergedWarnings: string[] = [];
+          await fetchNewsForMode(mode, mergedWarnings, tier);
+          setWarnings(mergedWarnings);
+          if (!options?.keepAgentPanel) setAgentPendingConfirm(false);
+          await loadSettings(false);
+          return;
+        }
+
         const stockResult = await marketApi.getStocks({
           refresh: forceRefresh,
           forceLive: options?.forceLive,
@@ -299,6 +343,39 @@ export function MarketDataProvider({
             : effectiveMode;
 
         setStocks(stockResult.data);
+        logStockCacheFromApi(
+          options?.silent ? 'loaded-silent' : 'loaded',
+          stockResult.meta,
+          stockResult.data.length
+        );
+        if (stockResult.data.length === 0) {
+          console.warn('[market-stocks] API returned 0 stocks', stockResult.meta);
+        }
+
+        const seriesRaw = stockResult.meta?.seriesBySymbol;
+        const seriesBySymbol =
+          seriesRaw && typeof seriesRaw === 'object'
+            ? (seriesRaw as Record<string, TimeSeriesData[]>)
+            : {};
+        if (stockResult.data.length > 0) {
+          saveMarketStockBundle({
+            cachedAt:
+              typeof stockResult.meta?.cachedAt === 'string'
+                ? stockResult.meta.cachedAt
+                : new Date().toISOString(),
+            stocks: stockResult.data,
+            seriesBySymbol,
+            provider:
+              typeof stockResult.meta?.provider === 'string'
+                ? stockResult.meta.provider
+                : undefined,
+            cacheSource:
+              typeof stockResult.meta?.cacheSource === 'string'
+                ? stockResult.meta.cacheSource
+                : undefined,
+          });
+        }
+
         applySettings({
           dataMode: mode,
           provider:
@@ -324,7 +401,12 @@ export function MarketDataProvider({
         }
         await loadSettings(forceRefresh);
       } catch (err) {
-        console.error('Error fetching market data:', err);
+        console.error('[market-stocks] fetch failed', {
+          silent: Boolean(options?.silent),
+          forMode: options?.forMode ?? dataMode,
+          refresh: forceRefresh,
+          error: err,
+        });
         if (!options?.silent) {
           setStocks([]);
           setNews([]);
@@ -517,8 +599,12 @@ export function MarketDataProvider({
         agentTier: last?.tier,
         keepAgentPanel: true,
       });
-    } catch {
-      /* quotes may load on next refresh */
+    } catch (err) {
+      console.warn('[market-stocks] agent mode silent quote load failed — dashboard may be empty', err);
+      setWarnings(prev => [
+        ...prev,
+        'Could not load live quotes on this device. Use Refresh or confirm the same API URL and Firebase as device A.',
+      ]);
     }
   }, [loadAgentEstimate, refreshMarketData, restoreAgentJob]);
 

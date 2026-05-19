@@ -146,7 +146,11 @@ export function PromptEvalDashboard() {
     setError(null);
     setLastSummary(null);
     try {
-      await startPromptEvalTest({ promptVersion, ragEnabled, symbolLimit: 5 });
+      await startPromptEvalTest({
+        promptVersion,
+        ragEnabled,
+        symbolLimit: 3,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Test failed');
       setRunning(false);

@@ -41,10 +41,10 @@ export const env = {
     if (mode === 'agent') return 'agent' as const;
     return 'live' as const;
   })(),
-  /** How long to reuse live quotes/news before refetching (default 24h = once per day). */
+  /** How long to reuse live quotes/news before refetching (default 12h). */
   marketCacheTtlHours: Math.max(
     1,
-    parseFloat(process.env.MARKET_CACHE_TTL_HOURS ?? '24') || 24
+    parseFloat(process.env.MARKET_CACHE_TTL_HOURS ?? '12') || 12
   ),
   /** EOD quotes, charts, and news — https://www.tiingo.com */
   tiingoApiToken: process.env.TIINGO_API_TOKEN ?? '',

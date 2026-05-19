@@ -68,6 +68,12 @@ import {
 } from '../../agent-scrape/services/agentScrapeService.js';
 import { readAgentBulkFromFirestore } from '../../agent-scrape/services/agentFirestoreCache.js';
 import { effectiveMarketCacheMode } from './marketCacheMode.js';
+import {
+  logMarketStocks,
+  logYahooChart,
+  marketStocksCacheNote,
+  type MarketStocksCacheSource,
+} from './marketCacheLog.js';
 import { normalizeSeriesBySymbol } from './marketSeriesUtils.js';
 import type {
   BulkStocksCache,
@@ -139,9 +145,24 @@ function newsCachedAtIso(): string | undefined {
   return ts ? new Date(ts).toISOString() : undefined;
 }
 
-export function invalidateMarketCache(): void {
+/** Clears server RAM only — keeps Firestore bulk for other devices / restarts. */
+export function invalidateMarketMemoryCache(): void {
+  logMarketStocks('invalidate-memory', {
+    firestoreConfigured: env.isFirebaseConfigured(),
+    instanceId: env.firebaseAppInstanceId,
+  });
   deleteMemoryCacheByPrefix('market:');
   invalidateAgentScrapeCache();
+}
+
+/** Full wipe including Firestore (use sparingly — breaks cross-device shared cache). */
+export function invalidateMarketCache(): void {
+  logMarketStocks('invalidate-all', {
+    source: 'cache-invalidated',
+    firestoreConfigured: env.isFirebaseConfigured(),
+    instanceId: env.firebaseAppInstanceId,
+  });
+  invalidateMarketMemoryCache();
   void deleteAllMarketFirestoreCaches();
 }
 
@@ -238,18 +259,31 @@ function agentBulkToMarketBulk(
 function bulkCacheHit(
   bundle: BulkStocksCache,
   cachedAt: string,
-  cacheMeta: { cacheTtlHours: number }
+  cacheMeta: { cacheTtlHours: number },
+  cacheSource: MarketStocksCacheSource,
+  logDetail?: Record<string, unknown>
 ): {
   stocks: StockQuote[];
   meta: MarketFetchMeta;
 } {
   hydrateBulkCache(bundle);
+  logMarketStocks('hit', {
+    source: cacheSource,
+    count: bundle.stocks.length,
+    cachedAt,
+    bulkKey: bulkStocksCacheKey(),
+    firestoreConfigured: env.isFirebaseConfigured(),
+    ...logDetail,
+  });
   return {
     stocks: bundle.stocks,
     meta: {
       ...bundle.meta,
       fromCache: true,
       cachedAt,
+      cacheSource,
+      cacheNote: marketStocksCacheNote(cacheSource),
+      seriesBySymbol: bundle.seriesBySymbol,
       ...cacheMeta,
     },
   };
@@ -277,7 +311,13 @@ async function tryStaleBulkCache(warning: string): Promise<{
     STALE_BULK_MAX_MS
   );
   if (stale) {
-    const hit = bulkCacheHit(stale.data, new Date(stale.timestamp).toISOString(), cacheMeta);
+    const hit = bulkCacheHit(
+      stale.data,
+      new Date(stale.timestamp).toISOString(),
+      cacheMeta,
+      'memory-stale',
+      { ageMs: Date.now() - stale.timestamp }
+    );
     return {
       ...hit,
       meta: { ...hit.meta, warnings: [warning, ...(hit.meta.warnings ?? [])] },
@@ -293,7 +333,9 @@ async function tryStaleBulkCache(warning: string): Promise<{
   const hit = bulkCacheHit(
     fsStale.bundle,
     new Date(fsStale.timestamp).toISOString(),
-    cacheMeta
+    cacheMeta,
+    'firestore-stale',
+    { ageMs: Date.now() - fsStale.timestamp }
   );
   return {
     ...hit,
@@ -338,11 +380,11 @@ const CHART_PRELOAD_NOTE =
 async function withTemporaryQuoteMode<T>(fn: () => Promise<T>): Promise<T> {
   const quoteMode = getQuoteDataMode();
   const prev = getMarketDataMode();
-  if (prev !== quoteMode) setMarketDataMode(quoteMode);
+  if (prev !== quoteMode) setMarketDataMode(quoteMode, { preserveCache: true });
   try {
     return await fn();
   } finally {
-    if (prev !== quoteMode) setMarketDataMode(prev);
+    if (prev !== quoteMode) setMarketDataMode(prev, { preserveCache: true });
   }
 }
 
@@ -395,6 +437,12 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
         hydrateBulkCache(bundle);
         return getFreshBulkCache();
       }
+    }
+
+    const fsStale = await readBulkStocksStaleFromFirestore(quoteCacheMode, STALE_BULK_MAX_MS);
+    if (fsStale?.bundle.stocks.length) {
+      hydrateBulkCache(fsStale.bundle);
+      return getFreshBulkCache();
     }
   }
 
@@ -450,8 +498,14 @@ export async function resolveYahooChartQuotes(symbol: string): Promise<YahooChar
   if (series?.length) {
     const quotes = chartQuotesFromTimeSeries(series);
     seedYahooChartCache(sym, quotes);
+    logYahooChart('hit', { symbol: sym, source: 'bulk-preload', bars: quotes.length });
     return quotes;
   }
+  logYahooChart('miss-bulk', {
+    symbol: sym,
+    source: 'miss',
+    firestoreConfigured: env.isFirebaseConfigured(),
+  });
   return fetchYahooChartQuotes(symbol);
 }
 
@@ -663,12 +717,22 @@ export async function getAllStocks(options?: {
   const cacheMeta = { cacheTtlHours: env.marketCacheTtlHours };
 
   if (options?.refresh && !options?.forceLive) {
-    invalidateMarketCache();
+    invalidateMarketMemoryCache();
   }
 
   if (options?.forceLive) {
     invalidateAgentScrapeCache();
   }
+
+  logMarketStocks('request', {
+    dataMode: mode,
+    quoteDataMode: getQuoteDataMode(),
+    refresh: Boolean(options?.refresh),
+    forceLive: Boolean(options?.forceLive),
+    bulkKey: bulkStocksCacheKey(),
+    firestoreConfigured: env.isFirebaseConfigured(),
+    instanceId: env.firebaseAppInstanceId,
+  });
 
   if (mode === 'live' && !options?.refresh) {
     const bulkKey = bulkStocksCacheKey();
@@ -677,7 +741,8 @@ export async function getAllStocks(options?: {
       return bulkCacheHit(
         cached,
         quotesCachedAtIso() ?? new Date().toISOString(),
-        cacheMeta
+        cacheMeta,
+        'memory'
       );
     }
 
@@ -691,12 +756,42 @@ export async function getAllStocks(options?: {
         typeof lastUpdated === 'number'
           ? new Date(lastUpdated).toISOString()
           : new Date().toISOString();
-      return bulkCacheHit(bundle, cachedAt, cacheMeta);
+      return bulkCacheHit(bundle, cachedAt, cacheMeta, 'firestore-fresh', {
+        docId: `${env.firebaseAppInstanceId}_live`,
+      });
     }
+
+    const fsStale = await readBulkStocksStaleFromFirestore('live', STALE_BULK_MAX_MS);
+    if (fsStale?.bundle.stocks.length) {
+      const hit = bulkCacheHit(
+        fsStale.bundle,
+        new Date(fsStale.timestamp).toISOString(),
+        cacheMeta,
+        'firestore-stale',
+        { ageMs: Date.now() - fsStale.timestamp }
+      );
+      return {
+        ...hit,
+        meta: {
+          ...hit.meta,
+          warnings: [
+            'Showing cached live prices from Firestore (past TTL, still within stale window).',
+            ...(hit.meta.warnings ?? []),
+          ],
+        },
+      };
+    }
+
+    logMarketStocks('miss-live', {
+      source: 'miss',
+      reason: 'no-memory-or-firestore-bulk',
+      firestoreConfigured: env.isFirebaseConfigured(),
+    });
   }
 
   if (mode === 'mock') {
     const stocks = getAllMockQuotes(STOCK_SYMBOLS);
+    logMarketStocks('hit', { source: 'mock-catalog', count: stocks.length });
     return {
       stocks,
       meta: {
@@ -704,12 +799,95 @@ export async function getAllStocks(options?: {
         provider: MOCK_PROVIDER,
         fetched: stocks.length,
         failed: 0,
+        fromCache: true,
+        cacheSource: 'mock-catalog',
+        cacheNote: marketStocksCacheNote('mock-catalog'),
       },
     };
   }
 
   if (mode === 'agent') {
     const quoteMode = getQuoteDataMode();
+
+    if (!options?.refresh && quoteMode === 'live') {
+      const bulkKey = bulkStocksCacheKey();
+      const memCached = getMemoryCached<BulkStocksCache>(bulkKey, memoryCacheTtl.marketQuoteMs);
+      if (memCached?.stocks.length) {
+        const hit = bulkCacheHit(
+          memCached,
+          quotesCachedAtIso() ?? new Date().toISOString(),
+          cacheMeta,
+          'memory'
+        );
+        return {
+          stocks: hit.stocks,
+          meta: {
+            ...hit.meta,
+            dataMode: 'agent',
+            warnings: [
+              ...(hit.meta.warnings ?? []),
+              'Quotes from Live (memory). Use Agent panel for 30-day LLM chart jobs.',
+            ],
+          },
+        };
+      }
+
+      const fsDoc = await readBulkStocksFromFirestore('live');
+      if (fsDoc) {
+        const { lastUpdated, createdAt: _c, ...bundle } = fsDoc as BulkStocksCache & {
+          lastUpdated?: number;
+          createdAt?: number;
+        };
+        const cachedAt =
+          typeof lastUpdated === 'number'
+            ? new Date(lastUpdated).toISOString()
+            : new Date().toISOString();
+        const hit = bulkCacheHit(bundle, cachedAt, cacheMeta, 'firestore-fresh', {
+          docId: `${env.firebaseAppInstanceId}_live`,
+        });
+        return {
+          stocks: hit.stocks,
+          meta: {
+            ...hit.meta,
+            dataMode: 'agent',
+            warnings: [
+              ...(hit.meta.warnings ?? []),
+              'Quotes from Live (Firestore). Use Agent panel for 30-day LLM chart jobs.',
+            ],
+          },
+        };
+      }
+
+      const fsStale = await readBulkStocksStaleFromFirestore('live', STALE_BULK_MAX_MS);
+      if (fsStale?.bundle.stocks.length) {
+        const hit = bulkCacheHit(
+          fsStale.bundle,
+          new Date(fsStale.timestamp).toISOString(),
+          cacheMeta,
+          'firestore-stale',
+          { ageMs: Date.now() - fsStale.timestamp }
+        );
+        return {
+          stocks: hit.stocks,
+          meta: {
+            ...hit.meta,
+            dataMode: 'agent',
+            warnings: [
+              'Showing cached live prices from Firestore (past TTL, still within stale window).',
+              ...(hit.meta.warnings ?? []),
+              'Quotes from Live. Use Agent panel for 30-day LLM chart jobs.',
+            ],
+          },
+        };
+      }
+
+      logMarketStocks('miss-agent-live', {
+        source: 'miss',
+        reason: 'no-memory-or-firestore-bulk-before-quote-fetch',
+        firestoreConfigured: env.isFirebaseConfigured(),
+      });
+    }
+
     const { stocks, meta } = await withTemporaryQuoteMode(() =>
       getAllStocks({ ...options, refresh: options?.refresh })
     );
@@ -730,6 +908,13 @@ export async function getAllStocks(options?: {
   assertLiveMarketConfigured();
 
   const liveProvider = resolveLiveProvider();
+  const providerSource: MarketStocksCacheSource =
+    liveProvider === YAHOO_PROVIDER ? 'provider-yahoo' : 'provider-tiingo';
+  logMarketStocks('provider-fetch-start', {
+    source: providerSource,
+    provider: liveProvider,
+    symbolCount: STOCK_SYMBOLS.length,
+  });
   const bulk =
     liveProvider === YAHOO_PROVIDER
       ? await fetchYahooBulk(STOCK_SYMBOLS)
@@ -763,6 +948,7 @@ export async function getAllStocks(options?: {
         ]
       : undefined;
 
+  const seriesBySymbol = normalizeSeriesBySymbol(seriesMapToRecord(bulk.seriesBySymbol));
   const meta: MarketFetchMeta = {
     dataMode: 'live',
     provider: liveProvider,
@@ -772,10 +958,12 @@ export async function getAllStocks(options?: {
     warnings,
     fromCache: false,
     cachedAt: new Date().toISOString(),
+    cacheSource: providerSource,
+    cacheNote: marketStocksCacheNote(providerSource),
+    seriesBySymbol,
     ...cacheMeta,
   };
 
-  const seriesBySymbol = normalizeSeriesBySymbol(seriesMapToRecord(bulk.seriesBySymbol));
   const bulkBundle: BulkStocksCache = {
     stocks: stockResults,
     seriesBySymbol,
@@ -783,6 +971,13 @@ export async function getAllStocks(options?: {
   };
   hydrateBulkCache(bulkBundle);
   void writeBulkStocksToFirestore('live', bulkBundle);
+  logMarketStocks('provider-fetch-done', {
+    source: providerSource,
+    count: stockResults.length,
+    failed: failedCount,
+    wroteFirestore: env.isFirebaseConfigured(),
+    docId: `${env.firebaseAppInstanceId}_live`,
+  });
 
   return { stocks: stockResults, meta };
 }

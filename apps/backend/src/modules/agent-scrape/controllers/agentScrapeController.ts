@@ -272,6 +272,17 @@ export const getPromptEvalRagLog = asyncHandler(async (req: Request, res: Respon
 });
 
 function parsePromptEvalBody(req: Request) {
+  const gt = req.body?.groundTruth;
+  const groundTruth =
+    gt &&
+    typeof gt === 'object' &&
+    typeof gt.cachedAt === 'string' &&
+    Array.isArray(gt.symbols) &&
+    gt.seriesBySymbol &&
+    typeof gt.seriesBySymbol === 'object'
+      ? (gt as import('@investai/shared').PromptEvalGroundTruthPayload)
+      : undefined;
+
   return {
     promptVersion:
       typeof req.body?.promptVersion === 'string' && req.body.promptVersion.trim()
@@ -282,6 +293,7 @@ function parsePromptEvalBody(req: Request) {
       typeof req.body?.symbolLimit === 'number' && req.body.symbolLimit > 0
         ? Math.min(12, req.body.symbolLimit)
         : undefined,
+    groundTruth,
   };
 }
 
