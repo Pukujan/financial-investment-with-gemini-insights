@@ -23,9 +23,9 @@ import { getAgentSymbols, timeSeriesFromQuote } from './agentScrapeService.js';
 import { writeAgentBulkToFirestore, writeAgentNewsToFirestore } from './agentFirestoreCache.js';
 import { normalizeSeriesBySymbol } from '../../market/services/marketSeriesUtils.js';
 import {
-  fetchYahooChartQuotes,
   timeSeriesFromYahooQuotes,
 } from '../../market/services/yahooProvider.js';
+import { resolveYahooChartQuotes } from '../../market/services/marketService.js';
 import { estimateAgentScrape } from '../../ai-estimate/services/aiEstimateService.js';
 import {
   buildEstimateEval,
@@ -493,7 +493,7 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     const liveSymbols = allQuotes.map(q => q.symbol.toUpperCase());
     for (const sym of liveSymbols) {
       try {
-        const yahooBars = await fetchYahooChartQuotes(sym);
+        const yahooBars = await resolveYahooChartQuotes(sym);
         liveSeriesBySymbol[sym] = timeSeriesFromYahooQuotes(yahooBars);
         if (env.tiingoBatchDelayMs > 0) {
           await sleep(env.tiingoBatchDelayMs);

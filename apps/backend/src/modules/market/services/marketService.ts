@@ -49,8 +49,10 @@ import {
   fetchYahooTimeSeries,
   probeYahooProvider,
   quoteFromYahooQuotes,
+  seedYahooChartCache,
   YAHOO_PROVIDER,
   timeSeriesFromYahooQuotes,
+  type YahooChartQuote,
 } from './yahooProvider.js';
 import { bulkCacheKey as agentBulkCacheKey } from '../../agent-scrape/services/agentScrapeCache.js';
 import {
@@ -65,6 +67,7 @@ import {
   type AgentBulkCache,
 } from '../../agent-scrape/services/agentScrapeService.js';
 import { readAgentBulkFromFirestore } from '../../agent-scrape/services/agentFirestoreCache.js';
+import { effectiveMarketCacheMode } from './marketCacheMode.js';
 import { normalizeSeriesBySymbol } from './marketSeriesUtils.js';
 import type {
   BulkStocksCache,
@@ -115,7 +118,7 @@ function enrichQuote(quote: StockQuote): StockQuote {
 }
 
 function cacheKeyForMode(baseKey: string): string {
-  return `${baseKey}:${getMarketDataMode()}`;
+  return `${baseKey}:${effectiveMarketCacheMode(getMarketDataMode(), getQuoteDataMode())}`;
 }
 
 function bulkStocksCacheKey(): string {
@@ -236,7 +239,10 @@ async function tryStaleBulkCache(warning: string): Promise<{
     };
   }
 
-  const fsStale = await readBulkStocksStaleFromFirestore('live', STALE_BULK_MAX_MS);
+  const fsStale = await readBulkStocksStaleFromFirestore(
+    effectiveMarketCacheMode(getMarketDataMode(), getQuoteDataMode()),
+    STALE_BULK_MAX_MS
+  );
   if (!fsStale) return null;
 
   const hit = bulkCacheHit(
@@ -332,8 +338,9 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   if (mem) return mem;
 
   const mode = getMarketDataMode();
-  if (mode === 'live' || mode === 'agent') {
-    const fsDoc = await readBulkStocksFromFirestore(mode);
+  const quoteCacheMode = effectiveMarketCacheMode(mode, getQuoteDataMode());
+  if (quoteCacheMode === 'live' || quoteCacheMode === 'mock') {
+    const fsDoc = await readBulkStocksFromFirestore(quoteCacheMode);
     if (fsDoc) {
       const { lastUpdated, createdAt: _c, ...bundle } = fsDoc as BulkStocksCache & {
         lastUpdated?: number;
@@ -375,6 +382,32 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   }
 
   return null;
+}
+
+function chartQuotesFromTimeSeries(series: TimeSeriesData[]): YahooChartQuote[] {
+  return series.map(bar => ({
+    date: new Date(`${bar.timestamp}T00:00:00.000Z`),
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume,
+  }));
+}
+
+/**
+ * Yahoo golden for evals: per-symbol TTL cache → market bulk preload → API.
+ */
+export async function resolveYahooChartQuotes(symbol: string): Promise<YahooChartQuote[]> {
+  const sym = symbol.trim().toUpperCase();
+  const bulk = await resolveBulkCacheForCharts();
+  const series = getPreloadedTimeSeries(sym, bulk);
+  if (series?.length) {
+    const quotes = chartQuotesFromTimeSeries(series);
+    seedYahooChartCache(sym, quotes);
+    return quotes;
+  }
+  return fetchYahooChartQuotes(symbol);
 }
 
 function getPreloadedTimeSeries(symbol: string, bulk?: BulkStocksCache | null): TimeSeriesData[] | null {
