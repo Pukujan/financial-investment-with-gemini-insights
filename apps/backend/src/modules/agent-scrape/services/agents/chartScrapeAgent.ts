@@ -1,5 +1,5 @@
 import type { TimeSeriesData } from '@investai/shared';
-import { lastTradingDayKeys } from '@investai/shared';
+import { AGENT_CHART_TRADING_DAYS, lastTradingDayKeys } from '@investai/shared';
 import { env } from '../../../../config/env.js';
 import {
   callAiWithUsageFallback,
@@ -12,7 +12,7 @@ const CHART_MAX_TOKENS = 2048;
 
 const SYSTEM_PROMPT = `You are a financial data agent. Return ONLY minified JSON (no markdown, no prose):
 {"symbol":"SYM","bars":[["YYYY-MM-DD",open,high,low,close],...]}
-Exactly 30 daily bars, oldest to newest. OHLC must be numbers.`;
+Exactly ${AGENT_CHART_TRADING_DAYS} daily bars, oldest to newest. OHLC must be numbers.`;
 
 const EMPTY_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -107,7 +107,7 @@ function parseChartPayload(
       return null;
     })
     .filter((p): p is TimeSeriesData => p != null)
-    .slice(-30);
+    .slice(-AGENT_CHART_TRADING_DAYS);
 
   if (points.length < 10) {
     throw new Error(`Too few chart bars for ${sym} (${points.length})`);
@@ -116,7 +116,7 @@ function parseChartPayload(
   return points;
 }
 
-const TRADING_DAY_KEYS = () => lastTradingDayKeys(30);
+const TRADING_DAY_KEYS = () => lastTradingDayKeys(AGENT_CHART_TRADING_DAYS);
 
 function alignSeriesToTradingDays(
   points: TimeSeriesData[],
@@ -129,7 +129,7 @@ function alignSeriesToTradingDays(
     if (p) aligned.push({ ...p, timestamp: d });
   }
   if (aligned.length >= 10) return aligned;
-  return points.slice(-30);
+  return points.slice(-AGENT_CHART_TRADING_DAYS);
 }
 
 async function scrapeChartSymbol(

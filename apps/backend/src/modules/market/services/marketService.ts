@@ -145,6 +145,51 @@ export function invalidateMarketCache(): void {
   void deleteAllMarketFirestoreCaches();
 }
 
+export interface AgentChartCacheLoadResult {
+  loaded: boolean;
+  chartSymbols: number;
+  cachedAt?: string;
+}
+
+/** Hydrate agent LLM chart series from memory/Firestore into per-symbol timeseries keys. */
+export async function loadAgentChartCacheIntoMarket(): Promise<AgentChartCacheLoadResult> {
+  let agent = readAgentMemoryBulk();
+  if (!agent?.seriesBySymbol || Object.keys(agent.seriesBySymbol).length === 0) {
+    const fsBulk = await readAgentBulkFromFirestore();
+    if (fsBulk?.seriesBySymbol && Object.keys(fsBulk.seriesBySymbol).length > 0) {
+      agent = {
+        quotes: fsBulk.quotes,
+        seriesBySymbol: normalizeSeriesBySymbol(fsBulk.seriesBySymbol),
+      };
+      setMemoryCached(agentBulkCacheKey(), agent);
+    }
+  }
+
+  if (!agent?.seriesBySymbol) {
+    return { loaded: false, chartSymbols: 0 };
+  }
+
+  const chartSymbols = Object.values(agent.seriesBySymbol).filter(s => s?.length).length;
+  if (chartSymbols === 0) {
+    return { loaded: false, chartSymbols: 0 };
+  }
+
+  const bundle = agentBulkToMarketBulk(agent, {
+    dataMode: 'agent',
+    provider: AGENT_PROVIDER,
+    fetched: agent.quotes.length,
+    failed: 0,
+  });
+  hydrateChartSeriesFromBulk(bundle);
+
+  const cachedAtMs = getMemoryCachedAt(agentBulkCacheKey(), memoryCacheTtl.marketQuoteMs);
+  return {
+    loaded: true,
+    chartSymbols,
+    cachedAt: cachedAtMs ? new Date(cachedAtMs).toISOString() : undefined,
+  };
+}
+
 function hydrateChartSeriesFromBulk(bundle: BulkStocksCache): void {
   const seriesBySymbol = normalizeSeriesBySymbol(bundle.seriesBySymbol);
   const isAgent =

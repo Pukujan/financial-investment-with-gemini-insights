@@ -5,7 +5,6 @@ export const agentJobApi = {
   startJob: (options: {
     tier: AiCostTier;
     forceLive: boolean;
-    scrapeCharts?: boolean;
     chartsOnly?: boolean;
     anchorQuotes?: StockQuote[];
   }) =>
@@ -21,4 +20,10 @@ export const agentJobApi = {
 
   cancelJob: (id: string) =>
     http<AgentScrapeJob>(`/api/agent-scrape/jobs/${id}`, { method: 'DELETE' }),
+
+  loadChartCache: () =>
+    http<{ loaded: boolean; chartSymbols: number; cachedAt?: string }>(
+      '/api/agent-scrape/cache/load',
+      { method: 'POST' }
+    ),
 };

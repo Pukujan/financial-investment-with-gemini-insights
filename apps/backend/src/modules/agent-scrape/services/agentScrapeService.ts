@@ -26,7 +26,7 @@ import {
   writeAgentNewsToFirestore,
 } from './agentFirestoreCache.js';
 import { normalizeSeriesBySymbol } from '../../market/services/marketSeriesUtils.js';
-import { buildEodSeriesFromQuote } from '@investai/shared';
+import { AGENT_CHART_TRADING_DAYS, buildEodSeriesFromQuote } from '@investai/shared';
 import { estimateAgentScrape, computeActualCostUsd } from '../../ai-estimate/services/aiEstimateService.js';
 import { getTierModelId, parseAiCostTier } from '../../ai-estimate/services/modelTiers.js';
 
@@ -53,11 +53,10 @@ export function getLastAgentBatchError(): string | undefined {
 
 export function getAgentScrapeEstimate(
   symbols?: string[],
-  options?: { scrapeCharts?: boolean; chartsOnly?: boolean }
+  options?: { chartsOnly?: boolean }
 ): Promise<AgentScrapeEstimate> {
   return estimateAgentScrape(symbols ?? getAgentSymbols(), {
     chartsOnly: options?.chartsOnly !== false,
-    scrapeCharts: options?.scrapeCharts,
   });
 }
 
@@ -74,7 +73,7 @@ function sleep(ms: number): Promise<void> {
 
 /** Synthetic daily EOD series — same convention as Yahoo `interval: 1d` (see buildEodSeriesFromQuote). */
 export function timeSeriesFromQuote(quote: StockQuote): TimeSeriesData[] {
-  return buildEodSeriesFromQuote(quote.price, 30);
+  return buildEodSeriesFromQuote(quote.price, AGENT_CHART_TRADING_DAYS);
 }
 
 function emptyUsage(): AgentScrapeUsage {

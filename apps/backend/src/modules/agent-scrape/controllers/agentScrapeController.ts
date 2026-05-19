@@ -15,6 +15,7 @@ import {
   isAgentScrapeConfigured,
   parseAiCostTier,
 } from '../services/agentScrapeService.js';
+import { loadAgentChartCacheIntoMarket } from '../../market/services/marketService.js';
 import {
   cancelAgentJob,
   createAgentScrapeJob,
@@ -91,8 +92,8 @@ export const getAgentSources = asyncHandler(async (_req: Request, res: Response)
       method: 'LLM-generated news articles for market topics (not a wire service).',
     },
     charts: {
-      method: 'Synthetic 30-day series built from the scraped price',
-      note: 'Smooth drift around the agent price — not Tiingo or exchange history.',
+      method: 'LLM-generated 30-day daily OHLC (one OpenRouter call per symbol)',
+      note: 'Anchored to Live/Mock quote prices. Yahoo EOD used only in eval comparison.',
     },
     cache: {
       method: 'In-memory cache on the server between scrapes (batch quotes, bulk data, news).',
@@ -112,13 +113,24 @@ export const getStatus = asyncHandler(async (_req: Request, res: Response) => {
   });
 });
 
+export const postLoadChartCache = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await loadAgentChartCacheIntoMarket();
+  if (!result.loaded) {
+    throw new AppError(
+      'No agent chart cache found. Run a chart scrape job first, or wait for it to finish.',
+      404,
+      'AGENT_CHART_CACHE_EMPTY'
+    );
+  }
+  sendSuccess(res, result);
+});
+
 export const getEstimate = asyncHandler(async (req: Request, res: Response) => {
   if (!isAgentScrapeConfigured()) {
     throw new AppError(agentScrapeConfigError(), 503, 'AGENT_NOT_CONFIGURED');
   }
-  const scrapeCharts = req.query.scrapeCharts !== '0' && req.query.scrapeCharts !== 'false';
   const chartsOnly = req.query.chartsOnly !== '0' && req.query.chartsOnly !== 'false';
-  sendSuccess(res, await getAgentScrapeEstimate(getAgentSymbols(), { scrapeCharts, chartsOnly }));
+  sendSuccess(res, await getAgentScrapeEstimate(getAgentSymbols(), { chartsOnly }));
 });
 
 export const listGolden = asyncHandler(async (_req: Request, res: Response) => {
@@ -154,19 +166,10 @@ export const postJob = asyncHandler(async (req: Request, res: Response) => {
 
   const tier = parseAiCostTier(req.body?.tier) ?? ('cheaper' as AiCostTier);
   const forceLive = req.body?.forceLive === true;
-  const scrapeCharts = req.body?.scrapeCharts !== false;
   const chartsOnly = req.body?.chartsOnly !== false;
   const anchorQuotes = Array.isArray(req.body?.anchorQuotes)
     ? (req.body.anchorQuotes as import('@investai/shared').StockQuote[])
     : undefined;
-
-  if (!scrapeCharts) {
-    throw new AppError(
-      '30-day chart scrape is required (scrapeCharts cannot be disabled)',
-      400,
-      'AGENT_CHARTS_REQUIRED'
-    );
-  }
 
   if (forceLive) {
     assertUsageLimit('agent-run', req);
@@ -176,7 +179,6 @@ export const postJob = asyncHandler(async (req: Request, res: Response) => {
     const job = createAgentScrapeJob({
       tier,
       forceLive,
-      scrapeCharts,
       chartsOnly,
       anchorQuotes,
     });

@@ -81,6 +81,7 @@ export type {
 export type { ChartDayComparison, ChartPriceConvention } from './tradingDays.js';
 
 export {
+  AGENT_CHART_TRADING_DAYS,
   CHART_EOD_CONVENTION,
   buildDailyVsLive,
   buildEodSeriesFromQuote,

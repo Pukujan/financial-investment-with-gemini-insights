@@ -50,10 +50,15 @@ export interface AgentCacheInfo {
   cacheAgeHours: number | null;
   cacheTtlHours: number;
   cacheExpiresAt: string | null;
+  /** Legacy name — in charts-only mode mirrors `chartsFullyCached`. */
   quotesFullyCached: boolean;
   newsCached: boolean;
   cachedBatchCount: number;
   liveBatchCount: number;
+  /** Chart-only agent jobs: LLM 30-day series in bulk or per-batch cache. */
+  chartsFullyCached?: boolean;
+  chartCachedBatchCount?: number;
+  chartLiveBatchCount?: number;
 }
 
 export interface AiOperationEstimate {
@@ -64,6 +69,10 @@ export interface AiOperationEstimate {
   quotesFullyCached: boolean;
   newsCached: boolean;
   batches: AgentScrapeBatchEstimate[];
+  /** When true, estimate reflects chart-only jobs (quotes from Live/Mock). */
+  chartsOnly?: boolean;
+  chartsFullyCached?: boolean;
+  chartBatches?: AgentScrapeBatchEstimate[];
   cache: AgentCacheInfo;
   tiers: TierEstimate[];
   pricingFetchedAt: string;
