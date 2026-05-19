@@ -56,7 +56,7 @@ export function readAgentBulkMemory(): {
 /** Symbols with non-empty 30-day series in agent bulk memory cache. */
 export function countSymbolsWithChartSeries(
   symbols: string[],
-  seriesBySymbol: Record<string, { length: number }[] | undefined>
+  seriesBySymbol: Record<string, unknown[] | undefined>
 ): number {
   return symbols.filter(s => (seriesBySymbol[s.toUpperCase()]?.length ?? 0) > 0).length;
 }
