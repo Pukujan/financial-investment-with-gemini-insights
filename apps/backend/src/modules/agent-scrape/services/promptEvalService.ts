@@ -26,11 +26,8 @@ import {
 import type { Request } from 'express';
 import { firestoreCollections } from '../../../config/cache.js';
 import { getTierModelId } from '../../ai-estimate/services/modelTiers.js';
-import {
-  fetchYahooChartQuotes,
-  quoteFromYahooQuotes,
-  timeSeriesFromYahooQuotes,
-} from '../../market/services/yahooProvider.js';
+import { resolveYahooChartQuotes } from '../../market/services/marketService.js';
+import { quoteFromYahooQuotes, timeSeriesFromYahooQuotes } from '../../market/services/yahooProvider.js';
 import {
   loadEvalFromAllSources,
   mergeEvalById,
@@ -153,7 +150,7 @@ export async function runPromptEvalWithProgress(
 
   hooks.onSetupStart('golden', 'Fetch Yahoo golden (30d EOD)');
   for (const sym of symbols) {
-    const bars = await fetchYahooChartQuotes(sym);
+    const bars = await resolveYahooChartQuotes(sym);
     const quote = quoteFromYahooQuotes(sym, bars);
     yahooSeriesBySymbol[sym.toUpperCase()] = timeSeriesFromYahooQuotes(bars, EVAL_WINDOW_DAYS);
     golden.push({
