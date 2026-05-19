@@ -5,7 +5,7 @@ export const MARKET_STOCK_CACHE_HOURS = 12;
 
 export const MARKET_STOCK_CACHE_MS = MARKET_STOCK_CACHE_HOURS * 60 * 60 * 1000;
 
-/** Browser localStorage bundle for live/agent quote mode. */
+/** Browser localStorage bundle for live or agent quote caches (separate keys per mode). */
 export interface MarketStockLocalBundle {
   cachedAt: string;
   stocks: StockQuote[];

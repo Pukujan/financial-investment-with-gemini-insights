@@ -14,8 +14,10 @@ import type {
   AiCostTier,
   MarketDataMode,
   MarketAgentProvider,
+  MarketDataSettings,
   MarketLiveProvider,
   NewsArticle,
+  QuoteDataMode,
   StockQuote,
 } from '@investai/shared';
 import { buildEstimateEvalFromJob } from '@investai/shared';
@@ -32,6 +34,7 @@ import {
   isMarketStockBundleFresh,
   loadMarketStockBundle,
   saveMarketStockBundle,
+  type MarketStockStorageTarget,
 } from '../utils/marketStockStorage';
 import type { TimeSeriesData } from '@investai/shared';
 
@@ -64,6 +67,7 @@ interface MarketDataContextType {
   newsError: string | null;
   newsErrorCode: string | null;
   dataMode: MarketDataMode;
+  quoteDataMode: QuoteDataMode;
   liveProvider: MarketLiveProvider | MarketAgentProvider | null;
   liveReachable: boolean | null;
   switchingMode: boolean;
@@ -83,6 +87,7 @@ interface MarketDataContextType {
     options?: { forceLive?: boolean; agentTier?: AiCostTier; silent?: boolean }
   ) => Promise<void>;
   setDataMode: (mode: MarketDataMode) => Promise<void>;
+  setQuoteDataMode: (mode: QuoteDataMode) => Promise<void>;
   startAgentScrape: (forceLive: boolean) => Promise<void>;
   loadFromAgentCache: () => Promise<void>;
   requestAgentEstimate: () => Promise<void>;
@@ -98,6 +103,16 @@ interface MarketDataContextType {
 }
 
 const MarketDataContext = createContext<MarketDataContextType | undefined>(undefined);
+
+function stockStorageTarget(
+  dataMode: MarketDataMode,
+  quoteMode: QuoteDataMode
+): MarketStockStorageTarget {
+  return {
+    dataMode,
+    quoteDataMode: dataMode === 'agent' ? quoteMode : undefined,
+  };
+}
 
 function collectWarnings(meta?: Record<string, unknown>): string[] {
   if (!Array.isArray(meta?.warnings)) return [];
@@ -128,6 +143,7 @@ export function MarketDataProvider({
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsErrorCode, setNewsErrorCode] = useState<string | null>(null);
   const [dataMode, setDataModeState] = useState<MarketDataMode>('live');
+  const [quoteDataMode, setQuoteDataModeState] = useState<QuoteDataMode>('live');
   const [liveProvider, setLiveProvider] = useState<MarketLiveProvider | MarketAgentProvider | null>(
     null
   );
@@ -175,26 +191,20 @@ export function MarketDataProvider({
     onNavigateView?.('chart-eval');
   }, [onNavigateView]);
 
-  const applySettings = useCallback(
-    (settings: {
-      dataMode: MarketDataMode;
-      provider?: string;
-      liveReachable?: boolean | null;
-    }) => {
-      setDataModeState(settings.dataMode);
-      if (settings.provider === 'tiingo' || settings.provider === 'yahoo') {
-        setLiveProvider(settings.provider);
-      } else if (settings.provider === 'openrouter-agent') {
-        setLiveProvider('openrouter-agent');
-      } else if (settings.dataMode === 'mock') {
-        setLiveProvider(null);
-      }
-      if (settings.liveReachable !== undefined) {
-        setLiveReachable(settings.liveReachable);
-      }
-    },
-    []
-  );
+  const applySettings = useCallback((settings: MarketDataSettings) => {
+    setDataModeState(settings.dataMode);
+    setQuoteDataModeState(settings.quoteDataMode);
+    if (settings.provider === 'tiingo' || settings.provider === 'yahoo') {
+      setLiveProvider(settings.provider);
+    } else if (settings.provider === 'openrouter-agent') {
+      setLiveProvider('openrouter-agent');
+    } else if (settings.dataMode === 'mock') {
+      setLiveProvider(null);
+    }
+    if (settings.liveReachable !== undefined) {
+      setLiveReachable(settings.liveReachable);
+    }
+  }, []);
 
   const loadSettings = useCallback(
     async (probe = false) => {
@@ -239,13 +249,6 @@ export function MarketDataProvider({
         );
         setNews(newsResult.data);
         mergedWarnings.push(...collectWarnings(newsResult.meta));
-        if (
-          newsResult.meta?.dataMode === 'live' ||
-          newsResult.meta?.dataMode === 'mock' ||
-          newsResult.meta?.dataMode === 'agent'
-        ) {
-          setDataModeState(newsResult.meta.dataMode);
-        }
       } catch (newsErr) {
         setNews([]);
         if (newsErr instanceof ApiError) {
@@ -277,10 +280,13 @@ export function MarketDataProvider({
         silent?: boolean;
         /** Override stale dataMode closure (e.g. right after switching modes) */
         forMode?: MarketDataMode;
+        quoteDataMode?: QuoteDataMode;
         keepAgentPanel?: boolean;
       }
     ) => {
       const effectiveMode = options?.forMode ?? dataMode;
+      const effectiveQuoteMode = options?.quoteDataMode ?? quoteDataMode;
+      const storage = stockStorageTarget(effectiveMode, effectiveQuoteMode);
 
       if (!options?.silent) {
         setLoading(true);
@@ -293,7 +299,7 @@ export function MarketDataProvider({
 
       try {
         if (forceRefresh) {
-          clearMarketStockBundle();
+          clearMarketStockBundle(storage);
         }
 
         const quoteModesNeedCache =
@@ -301,7 +307,7 @@ export function MarketDataProvider({
         let usedLocalCache = false;
 
         if (quoteModesNeedCache && !forceRefresh) {
-          const local = loadMarketStockBundle();
+          const local = loadMarketStockBundle(storage);
           if (local && isMarketStockBundleFresh(local)) {
             usedLocalCache = true;
             setStocks(local.stocks);
@@ -311,7 +317,7 @@ export function MarketDataProvider({
               fromCache: true,
               cachedAt: local.cachedAt,
               provider: local.provider,
-              cacheNote: 'Fresh browser cache (<12h). Skipping stock API unless stale.',
+              cacheNote: `Fresh browser cache (${storage.dataMode}${storage.quoteDataMode ? ` · quotes ${storage.quoteDataMode}` : ''}, <12h).`,
             }, local.stocks.length);
             if (!options?.silent) setLoading(false);
           }
@@ -338,9 +344,10 @@ export function MarketDataProvider({
         });
         const metaMode = stockResult.meta?.dataMode;
         const mode =
-          metaMode === 'live' || metaMode === 'mock' || metaMode === 'agent'
+          options?.forMode ??
+          (metaMode === 'live' || metaMode === 'mock' || metaMode === 'agent'
             ? metaMode
-            : effectiveMode;
+            : effectiveMode);
 
         setStocks(stockResult.data);
         logStockCacheFromApi(
@@ -358,7 +365,7 @@ export function MarketDataProvider({
             ? (seriesRaw as Record<string, TimeSeriesData[]>)
             : {};
         if (stockResult.data.length > 0) {
-          saveMarketStockBundle({
+          saveMarketStockBundle(storage, {
             cachedAt:
               typeof stockResult.meta?.cachedAt === 'string'
                 ? stockResult.meta.cachedAt
@@ -376,13 +383,7 @@ export function MarketDataProvider({
           });
         }
 
-        applySettings({
-          dataMode: mode,
-          provider:
-            typeof stockResult.meta?.provider === 'string'
-              ? stockResult.meta.provider
-              : undefined,
-        });
+        setDataModeState(mode);
 
         const usage = parseAgentUsage(stockResult.meta);
         if (usage) setAgentScrapeUsage(usage);
@@ -421,7 +422,7 @@ export function MarketDataProvider({
         if (!options?.silent) setLoading(false);
       }
     },
-    [applySettings, dataMode, fetchNewsForMode, loadSettings, selectedAgentTier]
+    [dataMode, fetchNewsForMode, loadSettings, quoteDataMode, selectedAgentTier]
   );
 
   const finishAgentJob = useCallback(
@@ -596,6 +597,7 @@ export function MarketDataProvider({
       await refreshMarketData(false, {
         silent: true,
         forMode: 'agent',
+        quoteDataMode,
         agentTier: last?.tier,
         keepAgentPanel: true,
       });
@@ -606,7 +608,7 @@ export function MarketDataProvider({
         'Could not load live quotes on this device. Use Refresh or confirm the same API URL and Firebase as device A.',
       ]);
     }
-  }, [loadAgentEstimate, refreshMarketData, restoreAgentJob]);
+  }, [loadAgentEstimate, quoteDataMode, refreshMarketData, restoreAgentJob]);
 
   const loadFromAgentCache = useCallback(async () => {
     setAgentPendingConfirm(false);
@@ -623,23 +625,28 @@ export function MarketDataProvider({
     void loadAgentEstimate();
   }, [loadAgentEstimate]);
 
+  const setQuoteDataMode = useCallback(
+    async (mode: QuoteDataMode) => {
+      if (switchingMode || dataMode !== 'agent' || quoteDataMode === mode) return;
+
+      setSwitchingMode(true);
+      setError(null);
+      try {
+        const settings = await marketApi.setDataMode('agent', mode);
+        applySettings(settings);
+        await refreshMarketData(true, { forMode: 'agent', quoteDataMode: mode, keepAgentPanel: true });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update quote source');
+      } finally {
+        setSwitchingMode(false);
+      }
+    },
+    [applySettings, dataMode, quoteDataMode, refreshMarketData, switchingMode]
+  );
+
   const setDataMode = useCallback(
     async (mode: MarketDataMode) => {
-      if (switchingMode) return;
-
-      if (dataMode === 'agent' && (mode === 'live' || mode === 'mock')) {
-        setSwitchingMode(true);
-        try {
-          const settings = await marketApi.setDataMode('agent', mode);
-          applySettings(settings);
-          await refreshMarketData(true, { forMode: 'agent' });
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to update quote source');
-        } finally {
-          setSwitchingMode(false);
-        }
-        return;
-      }
+      if (switchingMode || dataMode === mode) return;
 
       setSwitchingMode(true);
       setError(null);
@@ -656,15 +663,24 @@ export function MarketDataProvider({
       try {
         const settings = await marketApi.setDataMode(mode);
         applySettings(settings);
-        setDataModeState(mode);
         setLiveProvider(
-          mode === 'live' ? 'tiingo' : mode === 'agent' ? 'openrouter-agent' : null
+          mode === 'live'
+            ? settings.provider === 'yahoo'
+              ? 'yahoo'
+              : 'tiingo'
+            : mode === 'agent'
+              ? 'openrouter-agent'
+              : null
         );
 
         if (mode === 'agent') {
           await initAgentMode();
         } else {
-          await refreshMarketData(true, { forMode: mode });
+          setAgentPanelExpanded(false);
+          await refreshMarketData(true, {
+            forMode: mode,
+            quoteDataMode: settings.quoteDataMode,
+          });
         }
       } catch (err) {
         setStocks([]);
@@ -719,6 +735,7 @@ export function MarketDataProvider({
         newsError,
         newsErrorCode,
         dataMode,
+        quoteDataMode,
         liveProvider,
         liveReachable,
         switchingMode,
@@ -735,6 +752,7 @@ export function MarketDataProvider({
         setSelectedAgentTier,
         refreshMarketData,
         setDataMode,
+        setQuoteDataMode,
         startAgentScrape,
         loadFromAgentCache,
         requestAgentEstimate,

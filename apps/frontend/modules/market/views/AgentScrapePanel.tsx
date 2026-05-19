@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, Play, Database } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, Play, Database, Radio } from 'lucide-react';
+import type { QuoteDataMode } from '@investai/shared';
 import type { AiCostTier, PromptEvalCooldownStatus, TierEstimate } from '@investai/shared';
 import { AI_COST_TIERS } from '@investai/shared';
 import { formatUsd } from '../../ai-estimate/utils/formatUsd';
@@ -66,6 +67,9 @@ export function AgentScrapePanel() {
     startAgentScrape,
     loadFromAgentCache,
     requestAgentEstimate,
+    quoteDataMode,
+    setQuoteDataMode,
+    switchingMode,
     error,
     errorCode,
   } = useMarketData();
@@ -200,6 +204,35 @@ export function AgentScrapePanel() {
             <AgentCacheStatusBadge cache={cache} />
 
             <div>
+              <p className="text-xs font-medium text-violet-800">Quote & news source</p>
+              <div
+                className="inline-flex gap-1 p-0.5 rounded-md border border-violet-300 bg-white/70 mb-3"
+                role="group"
+                aria-label="Agent quote source"
+              >
+                {(['live', 'mock'] as QuoteDataMode[]).map(q => (
+                  <button
+                    key={q}
+                    type="button"
+                    disabled={busy || switchingMode}
+                    onClick={() => void setQuoteDataMode(q)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium ${
+                      quoteDataMode === q
+                        ? 'bg-violet-600 text-white'
+                        : 'text-violet-800 hover:bg-violet-100'
+                    } disabled:opacity-50`}
+                  >
+                    {q === 'live' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Radio className="w-3 h-3" />
+                        Live
+                      </span>
+                    ) : (
+                      'Mock'
+                    )}
+                  </button>
+                ))}
+              </div>
               <p className="text-xs font-medium text-violet-800 mb-2">Cost tier</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {AI_COST_TIERS.map(tierKey => {

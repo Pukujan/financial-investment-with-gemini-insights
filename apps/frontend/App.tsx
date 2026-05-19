@@ -43,7 +43,7 @@ function AppContent({
   currentView: View;
   setCurrentView: (view: View) => void;
 }) {
-  const { lastUpdated, dataMode, liveProvider } = useMarketData();
+  const { lastUpdated, dataMode, quoteDataMode, liveProvider } = useMarketData();
   const { loginAvailable, authenticated, logout, requestLogin } = useAuth();
   const liveLabel =
     dataMode === 'live'
@@ -51,7 +51,7 @@ function AppContent({
         ? 'Live (Yahoo)'
         : 'Live (Tiingo)'
       : dataMode === 'agent'
-        ? 'Agent scrape'
+        ? `Agent · ${quoteDataMode === 'live' ? 'Live quotes' : 'Mock quotes'}`
         : 'Mock catalog';
   const formatTime = (date: Date | null) => {
     if (!date) return '';

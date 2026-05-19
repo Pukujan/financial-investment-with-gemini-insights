@@ -23,6 +23,13 @@ export function DataModeToggle() {
           <button
             key={id}
             type="button"
+            title={
+              id === 'agent'
+                ? 'Agent — LLM chart jobs; set Live/Mock quotes in the agent panel'
+                : id === 'live'
+                  ? 'Live — Yahoo/Tiingo quotes and charts'
+                  : 'Mock — static catalog'
+            }
             disabled={switchingMode}
             onClick={() => {
               if (id !== dataMode) void setDataMode(id);

@@ -11,16 +11,21 @@ import {
   writeFirestoreCache,
 } from '../../../utils/firestoreCache.js';
 import { logMarketStocks } from './marketCacheLog.js';
+import type { MarketBulkFirestoreSlot } from './marketCacheMode.js';
 import type { BulkStocksCache, NewsCacheBundle } from './marketCacheTypes.js';
 
-function marketDocId(mode: MarketDataMode): string {
+function marketBulkDocId(slot: MarketBulkFirestoreSlot): string {
+  return `${env.firebaseAppInstanceId}_${slot}`;
+}
+
+function marketNewsDocId(mode: MarketDataMode): string {
   return `${env.firebaseAppInstanceId}_${mode}`;
 }
 
 export async function readBulkStocksFromFirestore(
-  mode: MarketDataMode
+  slot: MarketBulkFirestoreSlot
 ): Promise<BulkStocksCache | null> {
-  const docId = marketDocId(mode);
+  const docId = marketBulkDocId(slot);
   if (!env.isFirebaseConfigured()) {
     logMarketStocks('firestore-read-skip', {
       reason: 'firebase-not-configured',
@@ -70,10 +75,10 @@ export async function readBulkStocksFromFirestore(
 }
 
 export async function writeBulkStocksToFirestore(
-  mode: MarketDataMode,
+  slot: MarketBulkFirestoreSlot,
   bundle: BulkStocksCache
 ): Promise<void> {
-  const docId = marketDocId(mode);
+  const docId = marketBulkDocId(slot);
   if (!env.isFirebaseConfigured()) {
     logMarketStocks('firestore-write-skip', {
       reason: 'firebase-not-configured',
@@ -95,12 +100,12 @@ export async function writeBulkStocksToFirestore(
 }
 
 export async function readBulkStocksStaleFromFirestore(
-  mode: MarketDataMode,
+  slot: MarketBulkFirestoreSlot,
   maxStaleMs: number
 ): Promise<{ bundle: BulkStocksCache; timestamp: number } | null> {
   const hit = await readFirestoreCacheStale<BulkStocksCache>(
     firestoreCollections.marketBulk,
-    marketDocId(mode),
+    marketBulkDocId(slot),
     maxStaleMs
   );
   if (!hit) return null;
@@ -112,7 +117,7 @@ export async function readNewsFromFirestore(
 ): Promise<NewsCacheBundle | null> {
   return readFirestoreCache<NewsCacheBundle>(
     firestoreCollections.marketNews,
-    marketDocId(mode),
+    marketNewsDocId(mode),
     marketFirestoreTtlMs
   );
 }
@@ -121,7 +126,7 @@ export async function writeNewsToFirestore(
   mode: MarketDataMode,
   bundle: NewsCacheBundle
 ): Promise<void> {
-  await writeFirestoreCache(firestoreCollections.marketNews, marketDocId(mode), {
+  await writeFirestoreCache(firestoreCollections.marketNews, marketNewsDocId(mode), {
     articles: bundle.articles,
     meta: bundle.meta,
   });
@@ -133,7 +138,7 @@ export async function readNewsStaleFromFirestore(
 ): Promise<NewsCacheBundle | null> {
   const hit = await readFirestoreCacheStale<NewsCacheBundle>(
     firestoreCollections.marketNews,
-    marketDocId(mode),
+    marketNewsDocId(mode),
     maxStaleMs
   );
   if (!hit) return null;
@@ -141,10 +146,15 @@ export async function readNewsStaleFromFirestore(
 }
 
 export async function deleteMarketFirestoreCache(mode: MarketDataMode): Promise<void> {
-  const docId = marketDocId(mode);
+  const newsId = marketNewsDocId(mode);
+  const bulkIds: string[] =
+    mode === 'agent'
+      ? [marketBulkDocId('agent-live'), marketBulkDocId('agent-mock')]
+      : [marketBulkDocId(mode === 'mock' ? 'mock' : 'live')];
+
   await Promise.all([
-    deleteFirestoreCache(firestoreCollections.marketBulk, docId),
-    deleteFirestoreCache(firestoreCollections.marketNews, docId),
+    ...bulkIds.map(docId => deleteFirestoreCache(firestoreCollections.marketBulk, docId)),
+    deleteFirestoreCache(firestoreCollections.marketNews, newsId),
   ]);
 }
 
@@ -152,10 +162,14 @@ export async function deleteAllMarketFirestoreCaches(): Promise<void> {
   const { deleteAgentFirestoreCaches } = await import(
     '../../agent-scrape/services/agentFirestoreCache.js'
   );
+  const bulkSlots: MarketBulkFirestoreSlot[] = ['live', 'mock', 'agent-live', 'agent-mock'];
   await Promise.all([
-    deleteMarketFirestoreCache('live'),
-    deleteMarketFirestoreCache('mock'),
-    deleteMarketFirestoreCache('agent'),
+    ...bulkSlots.map(slot =>
+      deleteFirestoreCache(firestoreCollections.marketBulk, marketBulkDocId(slot))
+    ),
+    deleteFirestoreCache(firestoreCollections.marketNews, marketNewsDocId('live')),
+    deleteFirestoreCache(firestoreCollections.marketNews, marketNewsDocId('mock')),
+    deleteFirestoreCache(firestoreCollections.marketNews, marketNewsDocId('agent')),
     deleteAgentFirestoreCaches(),
   ]);
 }

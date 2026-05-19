@@ -21,6 +21,6 @@ export function logStockCacheFromApi(
     cacheNote,
     warnings: meta?.warnings,
     clientNote:
-      'Stocks: localStorage (12h) → API → server RAM → Firestore → Yahoo. Eval ground truth prefers fresh localStorage.',
+      'Stocks: localStorage live vs agent-* (12h) → API → server RAM → Firestore (live vs agent-live) → Yahoo.',
   });
 }

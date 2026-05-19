@@ -67,7 +67,8 @@ import {
   type AgentBulkCache,
 } from '../../agent-scrape/services/agentScrapeService.js';
 import { readAgentBulkFromFirestore } from '../../agent-scrape/services/agentFirestoreCache.js';
-import { effectiveMarketCacheMode } from './marketCacheMode.js';
+import { bulkFirestoreSlot, effectiveMarketCacheMode } from './marketCacheMode.js';
+import type { MarketBulkFirestoreSlot } from './marketCacheMode.js';
 import {
   logMarketStocks,
   logYahooChart,
@@ -325,7 +326,7 @@ async function tryStaleBulkCache(warning: string): Promise<{
   }
 
   const fsStale = await readBulkStocksStaleFromFirestore(
-    effectiveMarketCacheMode(getMarketDataMode(), getQuoteDataMode()),
+    bulkFirestoreSlot(getMarketDataMode(), getQuoteDataMode()),
     STALE_BULK_MAX_MS
   );
   if (!fsStale) return null;
@@ -425,9 +426,9 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
   if (mem) return mem;
 
   const mode = getMarketDataMode();
-  const quoteCacheMode = effectiveMarketCacheMode(mode, getQuoteDataMode());
-  if (quoteCacheMode === 'live' || quoteCacheMode === 'mock') {
-    const fsDoc = await readBulkStocksFromFirestore(quoteCacheMode);
+  const bulkSlot = bulkFirestoreSlot(mode, getQuoteDataMode());
+  if (bulkSlot === 'live' || bulkSlot === 'mock' || bulkSlot === 'agent-live' || bulkSlot === 'agent-mock') {
+    const fsDoc = await readBulkStocksFromFirestore(bulkSlot);
     if (fsDoc) {
       const { lastUpdated, createdAt: _c, ...bundle } = fsDoc as BulkStocksCache & {
         lastUpdated?: number;
@@ -439,7 +440,7 @@ async function resolveBulkCacheForCharts(): Promise<BulkStocksCache | null> {
       }
     }
 
-    const fsStale = await readBulkStocksStaleFromFirestore(quoteCacheMode, STALE_BULK_MAX_MS);
+    const fsStale = await readBulkStocksStaleFromFirestore(bulkSlot, STALE_BULK_MAX_MS);
     if (fsStale?.bundle.stocks.length) {
       hydrateBulkCache(fsStale.bundle);
       return getFreshBulkCache();
@@ -709,11 +710,15 @@ export async function getAllStocks(options?: {
   refresh?: boolean;
   forceLive?: boolean;
   agentTier?: import('@investai/shared').AiCostTier;
+  /** When agent delegates to live/mock fetch, persist under agent-* Firestore docs. */
+  firestoreBulkSlot?: MarketBulkFirestoreSlot;
 }): Promise<{
   stocks: StockQuote[];
   meta: MarketFetchMeta & { agentScrape?: import('@investai/shared').AgentScrapeUsage };
 }> {
   const mode = getMarketDataMode();
+  const firestoreSlot =
+    options?.firestoreBulkSlot ?? bulkFirestoreSlot(mode, getQuoteDataMode());
   const cacheMeta = { cacheTtlHours: env.marketCacheTtlHours };
 
   if (options?.refresh && !options?.forceLive) {
@@ -832,7 +837,8 @@ export async function getAllStocks(options?: {
         };
       }
 
-      const fsDoc = await readBulkStocksFromFirestore('live');
+      const agentQuoteSlot = bulkFirestoreSlot('agent', quoteMode);
+      const fsDoc = await readBulkStocksFromFirestore(agentQuoteSlot);
       if (fsDoc) {
         const { lastUpdated, createdAt: _c, ...bundle } = fsDoc as BulkStocksCache & {
           lastUpdated?: number;
@@ -843,7 +849,7 @@ export async function getAllStocks(options?: {
             ? new Date(lastUpdated).toISOString()
             : new Date().toISOString();
         const hit = bulkCacheHit(bundle, cachedAt, cacheMeta, 'firestore-fresh', {
-          docId: `${env.firebaseAppInstanceId}_live`,
+          docId: `${env.firebaseAppInstanceId}_${agentQuoteSlot}`,
         });
         return {
           stocks: hit.stocks,
@@ -858,7 +864,7 @@ export async function getAllStocks(options?: {
         };
       }
 
-      const fsStale = await readBulkStocksStaleFromFirestore('live', STALE_BULK_MAX_MS);
+      const fsStale = await readBulkStocksStaleFromFirestore(agentQuoteSlot, STALE_BULK_MAX_MS);
       if (fsStale?.bundle.stocks.length) {
         const hit = bulkCacheHit(
           fsStale.bundle,
@@ -889,7 +895,11 @@ export async function getAllStocks(options?: {
     }
 
     const { stocks, meta } = await withTemporaryQuoteMode(() =>
-      getAllStocks({ ...options, refresh: options?.refresh })
+      getAllStocks({
+        ...options,
+        refresh: options?.refresh,
+        firestoreBulkSlot: bulkFirestoreSlot('agent', quoteMode),
+      })
     );
     const quoteLabel = quoteMode === 'live' ? 'Live' : 'Mock';
     return {
@@ -970,13 +980,13 @@ export async function getAllStocks(options?: {
     meta,
   };
   hydrateBulkCache(bulkBundle);
-  void writeBulkStocksToFirestore('live', bulkBundle);
+  void writeBulkStocksToFirestore(firestoreSlot, bulkBundle);
   logMarketStocks('provider-fetch-done', {
     source: providerSource,
     count: stockResults.length,
     failed: failedCount,
     wroteFirestore: env.isFirebaseConfigured(),
-    docId: `${env.firebaseAppInstanceId}_live`,
+    docId: `${env.firebaseAppInstanceId}_${firestoreSlot}`,
   });
 
   return { stocks: stockResults, meta };

@@ -1,12 +1,35 @@
 import type {
   MarketStockLocalBundle,
+  MarketDataMode,
   PromptEvalGroundTruthPayload,
+  QuoteDataMode,
   StockQuote,
   TimeSeriesData,
 } from '@investai/shared';
 import { MARKET_STOCK_CACHE_MS } from '@investai/shared';
 
-const STORAGE_KEY = 'investai-market-stocks-v2';
+/** Live dashboard quotes — separate from agent-mode quote cache. */
+const LIVE_STORAGE_KEY = 'investai-market-stocks-live-v2';
+/** Legacy key (pre-split); migrated into live on read. */
+const LEGACY_STORAGE_KEY = 'investai-market-stocks-v2';
+
+function agentStorageKey(quoteMode: QuoteDataMode): string {
+  return `investai-market-stocks-agent-${quoteMode}-v1`;
+}
+
+export interface MarketStockStorageTarget {
+  dataMode: MarketDataMode;
+  quoteDataMode?: QuoteDataMode;
+}
+
+function resolveStorageKey(target: MarketStockStorageTarget): string | null {
+  if (target.dataMode === 'live') return LIVE_STORAGE_KEY;
+  if (target.dataMode === 'agent') {
+    const quote = target.quoteDataMode ?? 'live';
+    return agentStorageKey(quote);
+  }
+  return null;
+}
 
 export function isMarketStockBundleFresh(
   bundle: MarketStockLocalBundle | null,
@@ -18,10 +41,8 @@ export function isMarketStockBundleFresh(
   return Date.now() - t < maxAgeMs;
 }
 
-export function loadMarketStockBundle(): MarketStockLocalBundle | null {
+function parseBundle(raw: string): MarketStockLocalBundle | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as MarketStockLocalBundle;
     if (!parsed?.stocks?.length || typeof parsed.cachedAt !== 'string') return null;
     return parsed;
@@ -30,10 +51,43 @@ export function loadMarketStockBundle(): MarketStockLocalBundle | null {
   }
 }
 
-export function saveMarketStockBundle(bundle: MarketStockLocalBundle): void {
+export function loadMarketStockBundle(target: MarketStockStorageTarget): MarketStockLocalBundle | null {
+  const key = resolveStorageKey(target);
+  if (!key) return null;
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(bundle));
+    const raw = localStorage.getItem(key);
+    if (raw) return parseBundle(raw);
+
+    if (target.dataMode === 'live') {
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        const bundle = parseBundle(legacy);
+        if (bundle) {
+          localStorage.setItem(LIVE_STORAGE_KEY, legacy);
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+          console.info('[market-stocks] migrated legacy localStorage → live');
+          return bundle;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveMarketStockBundle(
+  target: MarketStockStorageTarget,
+  bundle: MarketStockLocalBundle
+): void {
+  const key = resolveStorageKey(target);
+  if (!key) return;
+
+  try {
+    localStorage.setItem(key, JSON.stringify(bundle));
     console.info('[market-stocks] localStorage saved', {
+      key,
       stockCount: bundle.stocks.length,
       seriesSymbols: Object.keys(bundle.seriesBySymbol ?? {}).length,
       cachedAt: bundle.cachedAt,
@@ -44,10 +98,13 @@ export function saveMarketStockBundle(bundle: MarketStockLocalBundle): void {
   }
 }
 
-export function clearMarketStockBundle(): void {
+export function clearMarketStockBundle(target: MarketStockStorageTarget): void {
+  const key = resolveStorageKey(target);
+  if (!key) return;
+
   try {
-    localStorage.removeItem(STORAGE_KEY);
-    console.info('[market-stocks] localStorage cleared');
+    localStorage.removeItem(key);
+    console.info('[market-stocks] localStorage cleared', { key });
   } catch {
     /* ignore */
   }
@@ -56,11 +113,19 @@ export function clearMarketStockBundle(): void {
 export function buildGroundTruthFromLocalBundle(
   symbols: string[]
 ): PromptEvalGroundTruthPayload | null {
-  const bundle = loadMarketStockBundle();
-  if (!bundle || !isMarketStockBundleFresh(bundle)) {
+  const live = loadMarketStockBundle({ dataMode: 'live' });
+  const bundle =
+    live && isMarketStockBundleFresh(live)
+      ? live
+      : (() => {
+          const agentLive = loadMarketStockBundle({ dataMode: 'agent', quoteDataMode: 'live' });
+          return agentLive && isMarketStockBundleFresh(agentLive) ? agentLive : null;
+        })();
+
+  if (!bundle) {
     console.warn('[market-stocks] no fresh localStorage ground truth for eval', {
-      hasBundle: Boolean(bundle),
-      cachedAt: bundle?.cachedAt,
+      hasLive: Boolean(live),
+      liveCachedAt: live?.cachedAt,
     });
     return null;
   }
