@@ -3,6 +3,9 @@ import type { TimeSeriesData } from './types.js';
 export const CHART_EOD_CONVENTION = 'eod' as const;
 export type ChartPriceConvention = typeof CHART_EOD_CONVENTION;
 
+/** Agent scrape + eval always use this many US equity session closes. */
+export const AGENT_CHART_TRADING_DAYS = 30;
+
 export function isWeekend(d: Date): boolean {
   const day = d.getDay();
   return day === 0 || day === 6;
@@ -29,7 +32,10 @@ export function lastTradingDayKeys(count: number, anchor = new Date()): string[]
  * Synthetic EOD series aligned with Yahoo `interval: 1d` bars:
  * one point per trading day, last session close = quote price (latest EOD).
  */
-export function buildEodSeriesFromQuote(price: number, days = 30): TimeSeriesData[] {
+export function buildEodSeriesFromQuote(
+  price: number,
+  days = AGENT_CHART_TRADING_DAYS
+): TimeSeriesData[] {
   const keys = lastTradingDayKeys(days);
   return keys.map((timestamp, i) => {
     const isLast = i === keys.length - 1;

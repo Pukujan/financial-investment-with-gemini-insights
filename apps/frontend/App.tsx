@@ -14,7 +14,7 @@ import {
   MarketDataProvider,
   useMarketData,
   DataModeToggle,
-  AgentScrapeQueueFloat,
+  AgentQueueFloat,
   type AppViewId,
 } from '@/modules/market';
 import {
@@ -157,7 +157,7 @@ function AppContent({
         {currentView === 'chart-eval' && <ChartEvalDashboard />}
         {currentView === 'prompt-eval' && <PromptEvalDashboard />}
       </main>
-      <AgentScrapeQueueFloat />
+      <AgentQueueFloat />
     </div>
   );
 }

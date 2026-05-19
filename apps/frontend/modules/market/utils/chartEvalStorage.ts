@@ -1,5 +1,5 @@
 import type { AgentChartEvalHistory, AgentChartEvalRecord } from '@investai/shared';
-import { loadAgentQueuePrefs } from './agentQueueStorage';
+import { loadAgentQueuePrefs } from '../../agent-queue/utils/agentQueueStorage';
 
 const STORAGE_KEY = 'investai-chart-eval-v1';
 const MAX_LOCAL = 50;

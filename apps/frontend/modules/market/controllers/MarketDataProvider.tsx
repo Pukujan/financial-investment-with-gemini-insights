@@ -23,7 +23,7 @@ import { ApiError } from '../../../shared/api/http';
 import { marketApi } from '../services/marketApi';
 import { aiEstimateApi } from '../../ai-estimate/services/aiEstimateApi';
 import { agentJobApi } from '../services/agentJobApi';
-import { loadAgentQueuePrefs, persistAgentJob } from '../utils/agentQueueStorage';
+import { loadAgentQueuePrefs, persistAgentJob } from '../../agent-queue/utils/agentQueueStorage';
 import { persistEstimateEvalRecord } from '../utils/estimateEvalStorage';
 import { persistChartEvalRecord } from '../utils/chartEvalStorage';
 
@@ -75,8 +75,6 @@ interface MarketDataContextType {
     options?: { forceLive?: boolean; agentTier?: AiCostTier; silent?: boolean }
   ) => Promise<void>;
   setDataMode: (mode: MarketDataMode) => Promise<void>;
-  scrapeCharts: boolean;
-  setScrapeCharts: (on: boolean) => void;
   startAgentScrape: (forceLive: boolean) => Promise<void>;
   loadFromAgentCache: () => Promise<void>;
   requestAgentEstimate: () => Promise<void>;
@@ -88,6 +86,7 @@ interface MarketDataContextType {
   navigateToDataSources: () => void;
   navigateToDashboard: () => void;
   navigateToEstimateEval: () => void;
+  navigateToChartEval: () => void;
 }
 
 const MarketDataContext = createContext<MarketDataContextType | undefined>(undefined);
@@ -136,7 +135,6 @@ export function MarketDataProvider({
   const [agentJobId, setAgentJobId] = useState<string | null>(null);
   const [agentPanelExpanded, setAgentPanelExpanded] = useState(false);
   const [selectedAgentTier, setSelectedAgentTier] = useState<AiCostTier>('cheaper');
-  const [scrapeCharts, setScrapeCharts] = useState(true);
   const [scrapeCompleteGuide, setScrapeCompleteGuide] = useState(false);
 
   const dismissScrapeCompleteGuide = useCallback(() => {
@@ -162,6 +160,11 @@ export function MarketDataProvider({
   const navigateToEstimateEval = useCallback(() => {
     setScrapeCompleteGuide(false);
     onNavigateView?.('estimate-eval');
+  }, [onNavigateView]);
+
+  const navigateToChartEval = useCallback(() => {
+    setScrapeCompleteGuide(false);
+    onNavigateView?.('chart-eval');
   }, [onNavigateView]);
 
   const applySettings = useCallback(
@@ -200,10 +203,7 @@ export function MarketDataProvider({
   const loadAgentEstimate = useCallback(async () => {
     setAgentEstimateLoading(true);
     try {
-      const estimate = await aiEstimateApi.getAgentScrapeEstimate({
-        scrapeCharts,
-        chartsOnly: true,
-      });
+      const estimate = await aiEstimateApi.getAgentScrapeEstimate({ chartsOnly: true });
       setAgentEstimate(estimate);
       return estimate;
     } catch (err) {
@@ -220,7 +220,7 @@ export function MarketDataProvider({
     } finally {
       setAgentEstimateLoading(false);
     }
-  }, [scrapeCharts]);
+  }, []);
 
   const fetchNewsForMode = useCallback(
     async (mode: MarketDataMode, mergedWarnings: string[], agentTier?: AiCostTier) => {
@@ -410,7 +410,6 @@ export function MarketDataProvider({
         const job = await agentJobApi.startJob({
           tier: selectedAgentTier,
           forceLive,
-          scrapeCharts,
           chartsOnly: true,
           anchorQuotes: stocks.length > 0 ? stocks : undefined,
         });
@@ -431,7 +430,7 @@ export function MarketDataProvider({
         setErrorCode(err instanceof ApiError ? err.code ?? 'AGENT_SCRAPE_FAILED' : 'AGENT_SCRAPE_FAILED');
       }
     },
-    [pollAgentJob, scrapeCharts, selectedAgentTier, stocks]
+    [pollAgentJob, selectedAgentTier, stocks]
   );
 
   const cancelAgentScrape = useCallback(async () => {
@@ -648,8 +647,6 @@ export function MarketDataProvider({
         setAgentPanelExpanded,
         selectedAgentTier,
         setSelectedAgentTier,
-        scrapeCharts,
-        setScrapeCharts,
         refreshMarketData,
         setDataMode,
         startAgentScrape,
@@ -663,6 +660,7 @@ export function MarketDataProvider({
         navigateToDataSources,
         navigateToDashboard,
         navigateToEstimateEval,
+        navigateToChartEval,
       }}
     >
       {children}

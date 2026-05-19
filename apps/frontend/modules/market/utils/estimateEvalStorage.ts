@@ -4,7 +4,7 @@ import {
   appendCompletedEvalToQueue,
   loadAgentQueuePrefs,
   loadCompletedEvalsFromQueue,
-} from './agentQueueStorage';
+} from '../../agent-queue/utils/agentQueueStorage';
 
 const STORAGE_KEY = 'investai-estimate-eval-v1';
 const MAX_LOCAL = 50;

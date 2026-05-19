@@ -105,3 +105,14 @@ export function persistAgentJob(job: AgentScrapeJob | null, jobId: string | null
     }
   }
 }
+
+export function clearAgentQueuePrefs(): void {
+  const pos = defaultQueuePosition();
+  saveAgentQueuePrefs({
+    position: pos,
+    minimized: false,
+    stepsExpanded: true,
+    lastJobId: null,
+    lastJob: null,
+  });
+}

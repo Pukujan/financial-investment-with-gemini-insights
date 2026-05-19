@@ -57,7 +57,7 @@ export function buildChartEval(
 ): AgentChartEvalRecord | null {
   if (!job.completedAt) return null;
 
-  const scrapeCharts = Boolean(job.scrapeCharts);
+  const scrapeCharts = job.scrapeCharts !== false;
   const hasLive = Boolean(liveSeriesBySymbol && Object.keys(liveSeriesBySymbol).length > 0);
   const symbols: AgentChartSymbolEval[] = [];
 

@@ -39,8 +39,8 @@ const estimateRecord: AgentEstimateEvalRecord = {
 const chartRecord: AgentChartEvalRecord = {
   jobId: 'eval-api-chart',
   completedAt: '2026-01-01T00:01:00.000Z',
-  chartMode: 'synthetic',
-  scrapeCharts: false,
+  chartMode: 'llm',
+  scrapeCharts: true,
   priceConvention: 'eod',
   liveReference: 'none',
   symbols: [

@@ -63,8 +63,6 @@ export function AgentScrapePanel() {
     setAgentPanelExpanded,
     selectedAgentTier,
     setSelectedAgentTier,
-    scrapeCharts,
-    setScrapeCharts,
     startAgentScrape,
     loadFromAgentCache,
     requestAgentEstimate,
@@ -122,7 +120,10 @@ export function AgentScrapePanel() {
   const selectedEstimate = tierByKey?.[selectedAgentTier];
   const canLoadCache =
     cache &&
-    (cache.state === 'ready_fresh' || cache.state === 'ready_aging' || cache.quotesFullyCached);
+    (cache.state === 'ready_fresh' ||
+      cache.state === 'ready_aging' ||
+      cache.chartsFullyCached === true ||
+      cache.quotesFullyCached);
 
   const summaryLabel = cache?.label ?? 'Agent mode';
   const busy = agentScraping || agentEstimateLoading;
@@ -217,25 +218,13 @@ export function AgentScrapePanel() {
               </div>
             </div>
 
-            <label className="flex items-start gap-2 text-sm text-violet-900 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={scrapeCharts}
-                onChange={e => {
-                  setScrapeCharts(e.target.checked);
-                  void requestAgentEstimate();
-                }}
-                disabled={busy}
-                className="mt-1 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
-              />
-              <span>
-                <span className="font-medium">Scrape 30-day charts</span>
-                <span className="block text-xs text-violet-700 mt-0.5">
-                  LLM OHLC only — spot prices come from your Live/Mock quote source. See Agent run
-                  history after the job.
-                </span>
+            <p className="text-sm text-violet-900">
+              <span className="font-medium">30-day LLM charts</span>
+              <span className="block text-xs text-violet-700 mt-0.5">
+                One OpenRouter call per symbol for OHLC history. Spot prices come from your Live/Mock
+                quote source. See Agent run history after the job.
               </span>
-            </label>
+            </p>
 
             {selectedEstimate && (
               <p className="text-xs text-violet-700">

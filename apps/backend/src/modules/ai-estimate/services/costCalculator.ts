@@ -21,11 +21,20 @@ export function formatUsd(amount: number): string {
 
 export function countLiveRequests(
   batches: { cached: boolean }[],
-  newsCached: boolean
+  newsCached: boolean,
+  options?: { chartsOnly?: boolean; chartBatches?: { cached: boolean }[] }
 ): { live: number; cached: number } {
-  let live = batches.filter(b => !b.cached).length;
-  let cached = batches.filter(b => b.cached).length;
-  if (!newsCached) live += 1;
-  else cached += 1;
+  const useCharts = options?.chartsOnly === true;
+  const chartBatches = options?.chartBatches ?? [];
+  const activeBatches = useCharts && chartBatches.length > 0 ? chartBatches : batches;
+
+  let live = activeBatches.filter(b => !b.cached).length;
+  let cached = activeBatches.filter(b => b.cached).length;
+
+  if (!useCharts) {
+    if (!newsCached) live += 1;
+    else cached += 1;
+  }
+
   return { live, cached };
 }
