@@ -25,7 +25,7 @@ export function DataModeToggle() {
             type="button"
             title={
               id === 'agent'
-                ? 'Agent — LLM chart jobs; set Live/Mock quotes in the agent panel'
+                ? 'Agent — 30-day LLM chart scrape only (no Live/Mock quote fetch)'
                 : id === 'live'
                   ? 'Live — Yahoo/Tiingo quotes and charts'
                   : 'Mock — static catalog'

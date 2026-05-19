@@ -127,3 +127,31 @@ export type {
   PromptEvalTierSymbol,
   RagRetrievalLog,
 } from './promptEval.js';
+
+export {
+  PROMPT_AB_VERSION_A_DEFAULT,
+  PROMPT_AB_VERSION_B_DEFAULT,
+} from './promptAbTest.js';
+
+export type {
+  PromptAbArmEfficiency,
+  PromptAbCostEstimateSnapshot,
+  PromptAbCostEval,
+  PromptAbEfficiencyCompare,
+  PromptAbEngineeringInsight,
+  PromptAbTestArmResult,
+  PromptAbTestExperiment,
+  PromptAbTestHistory,
+  PromptAbTestJob,
+  PromptAbTestJobStep,
+  PromptAbTestJobStatus,
+  PromptAbTestStepStatus,
+  PromptAbTestSummary,
+  PromptAbTestWinner,
+} from './promptAbTest.js';
+
+export {
+  buildArmEfficiency,
+  buildPromptAbCostEval,
+  buildPromptAbEfficiencyCompare,
+} from './promptAbTest.js';

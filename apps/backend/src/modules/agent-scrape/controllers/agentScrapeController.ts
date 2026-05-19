@@ -47,6 +47,7 @@ import {
   assertUsageLimit,
   getAllUsageLimitStatuses,
   recordUsageLimitRun,
+  resetUsageLimitsNow,
 } from '../services/aiUsageLimiter.js';
 import {
   assertPromptEvalCooldown,
@@ -54,6 +55,24 @@ import {
   recordPromptEvalCooldownRun,
 } from '../services/promptEvalCooldown.js';
 import { buildPromptEvalTestSummary } from '../services/promptEvalSummary.js';
+import {
+  estimatePromptAbForOptions,
+  getPromptAbTestHistory,
+  runPromptAbTestWithProgress,
+  syncPromptAbFromClient,
+} from '../services/promptAbTestService.js';
+import {
+  createPromptAbTestJob,
+  getActivePromptAbTestJob,
+  getPromptAbTestJob,
+  prunePromptAbTestJobs,
+  startPromptAbTestJob,
+} from '../services/promptAbTestJobService.js';
+import {
+  PROMPT_AB_VERSION_A_DEFAULT,
+  PROMPT_AB_VERSION_B_DEFAULT,
+  PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
+} from '@investai/shared';
 import {
   buildEstimateEval,
   getEstimateEvalHistory,
@@ -175,9 +194,6 @@ export const postJob = asyncHandler(async (req: Request, res: Response) => {
   const tier = parseAiCostTier(req.body?.tier) ?? ('cheaper' as AiCostTier);
   const forceLive = req.body?.forceLive === true;
   const chartsOnly = req.body?.chartsOnly !== false;
-  const anchorQuotes = Array.isArray(req.body?.anchorQuotes)
-    ? (req.body.anchorQuotes as import('@investai/shared').StockQuote[])
-    : undefined;
 
   if (forceLive) {
     assertUsageLimit('agent-run', req);
@@ -188,7 +204,6 @@ export const postJob = asyncHandler(async (req: Request, res: Response) => {
       tier,
       forceLive,
       chartsOnly,
-      anchorQuotes,
     });
     if (forceLive) recordUsageLimitRun('agent-run', req);
     startAgentScrapeJob(job.id);
@@ -313,6 +328,14 @@ export const getAiUsageLimits = asyncHandler(async (req: Request, res: Response)
   sendSuccess(res, getAllUsageLimitStatuses(req));
 });
 
+export const postResetUsageLimits = asyncHandler(async (req: Request, res: Response) => {
+  if (env.nodeEnv === 'production') {
+    throw new AppError('Not available in production', 404);
+  }
+  resetUsageLimitsNow();
+  sendSuccess(res, getAllUsageLimitStatuses(req));
+});
+
 export const postPromptEvalTest = asyncHandler(async (req: Request, res: Response) => {
   const result = await runPromptEvalTest(req, parsePromptEvalBody(req));
   sendSuccess(res, result, 201);
@@ -353,4 +376,108 @@ export const postPromptEvalExperiment = asyncHandler(async (req: Request, res: R
     { experiment, summary: buildPromptEvalTestSummary(experiment) },
     201
   );
+});
+
+function parsePromptAbBody(req: Request) {
+  const gt = req.body?.groundTruth;
+  const groundTruth =
+    gt &&
+    typeof gt === 'object' &&
+    typeof gt.cachedAt === 'string' &&
+    Array.isArray(gt.symbols) &&
+    gt.seriesBySymbol &&
+    typeof gt.seriesBySymbol === 'object'
+      ? (gt as import('@investai/shared').PromptEvalGroundTruthPayload)
+      : undefined;
+
+  const tierRaw = req.body?.tier;
+  const tier =
+    typeof tierRaw === 'string' && AI_COST_TIERS.includes(tierRaw as AiCostTier)
+      ? (tierRaw as AiCostTier)
+      : 'cheaper';
+
+  return {
+    versionA:
+      typeof req.body?.versionA === 'string' && req.body.versionA.trim()
+        ? req.body.versionA.trim()
+        : PROMPT_AB_VERSION_A_DEFAULT,
+    versionB:
+      typeof req.body?.versionB === 'string' && req.body.versionB.trim()
+        ? req.body.versionB.trim()
+        : PROMPT_AB_VERSION_B_DEFAULT,
+    tier,
+    ragEnabled: req.body?.ragEnabled === true,
+    symbolLimit:
+      typeof req.body?.symbolLimit === 'number' && req.body.symbolLimit > 0
+        ? Math.min(12, req.body.symbolLimit)
+        : undefined,
+    groundTruth,
+  };
+}
+
+export const getPromptAbTestHistoryHandler = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, await getPromptAbTestHistory());
+});
+
+export const getPromptAbTestEstimate = asyncHandler(async (req: Request, res: Response) => {
+  const tierRaw = req.query.tier ?? req.body?.tier;
+  const tier =
+    typeof tierRaw === 'string' && AI_COST_TIERS.includes(tierRaw as AiCostTier)
+      ? (tierRaw as AiCostTier)
+      : 'cheaper';
+  const ragEnabled = req.query.ragEnabled === 'true' || req.body?.ragEnabled === true;
+  const symbolLimitRaw = req.query.symbolLimit ?? req.body?.symbolLimit;
+  const symbolLimit =
+    typeof symbolLimitRaw === 'string'
+      ? Math.min(12, parseInt(symbolLimitRaw, 10) || PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT)
+      : typeof symbolLimitRaw === 'number'
+        ? Math.min(12, symbolLimitRaw)
+        : undefined;
+
+  sendSuccess(
+    res,
+    await estimatePromptAbForOptions({
+      tier,
+      ragEnabled,
+      symbolLimit,
+    })
+  );
+});
+
+export const postPromptAbTestSync = asyncHandler(async (req: Request, res: Response) => {
+  const records = Array.isArray(req.body?.records) ? req.body.records : [];
+  sendSuccess(res, await syncPromptAbFromClient(records));
+});
+
+export const postPromptAbTest = asyncHandler(async (req: Request, res: Response) => {
+  assertPromptEvalCooldown(req);
+  const opts = parsePromptAbBody(req);
+  const { experiment, summary } = await runPromptAbTestWithProgress(opts);
+  recordPromptEvalCooldownRun(req);
+  sendSuccess(res, { experiment, summary }, 201);
+});
+
+export const postPromptAbTestJob = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const opts = parsePromptAbBody(req);
+    const job = createPromptAbTestJob(opts);
+    startPromptAbTestJob(job.id, req);
+    prunePromptAbTestJobs();
+    sendSuccess(res, job, 202);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not start prompt A/B job';
+    throw new AppError(message, 409, 'PROMPT_AB_JOB_BUSY');
+  }
+});
+
+export const getPromptAbTestJobHandler = asyncHandler(async (req: Request, res: Response) => {
+  const job = getPromptAbTestJob(String(req.params.id));
+  if (!job) {
+    throw new AppError('Prompt A/B job not found', 404, 'PROMPT_AB_JOB_NOT_FOUND');
+  }
+  sendSuccess(res, job);
+});
+
+export const getActivePromptAbTestJobHandler = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, { job: getActivePromptAbTestJob() });
 });

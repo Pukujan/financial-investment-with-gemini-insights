@@ -74,6 +74,11 @@ function loadFile(): LimitsFile {
 
 let fileState = loadFile();
 
+/** Reload limits from disk (dev reset / tests). */
+export function reloadUsageLimitsFromDisk(): void {
+  fileState = loadFile();
+}
+
 function persistFile(): void {
   try {
     const dir = path.dirname(LIMITS_FILE);
@@ -221,4 +226,9 @@ export function recordUsageLimitRun(scope: UsageLimitScope, req: Request): void 
 export function resetUsageLimitsForTests(): void {
   fileState = { agentRun: emptyScopeState(), promptTest: emptyScopeState() };
   persistFile();
+}
+
+/** Clear agent-run + prompt-test cooldowns (development only). */
+export function resetUsageLimitsNow(): void {
+  resetUsageLimitsForTests();
 }

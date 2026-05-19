@@ -98,7 +98,7 @@ https://water-matrix-96907145.figma.site
 ## Documentation
 
 - [AGENTS.md](./AGENTS.md) — **fast orientation for humans & coding agents**
-- [Prompt engineering](./docs/PROMPT_ENGINEERING.md) — **versioned prompts, RAG, eval iteration** (study guide)
+- [Prompt engineering](./docs/PROMPT_ENGINEERING.md) — **versioned prompts, RAG, eval iteration**; chart batching case study (per-symbol vs bulk)
 - [Project scope](./docs/PROJECT_SCOPE.md) — golden eval, 3-tier LLM comparison, RAG, prompt iteration
 - [Agent scrape evals](./docs/AGENT_EVALS.md) — **estimate, chart & prompt eval dashboards** (full detail + diagrams)
 - [Dev log 2026-05-19](./docs/DEV_LOG_2026-05-19.md) — prompt registry + chart RAG on jobs

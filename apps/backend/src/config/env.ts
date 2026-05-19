@@ -57,10 +57,10 @@ export const env = {
    * Set true only for debugging — each chart click costs another Tiingo request.
    */
   tiingoChartOnDemand: process.env.TIINGO_CHART_ON_DEMAND === 'true',
-  /** Agent mode — max symbols to scrape (default 20) */
+  /** Agent mode — max symbols to scrape (default 10; was 20 — one LLM chart call per symbol) */
   agentScrapeSymbolLimit: Math.max(
     1,
-    parseInt(process.env.AGENT_SCRAPE_SYMBOL_LIMIT ?? '20', 10)
+    parseInt(process.env.AGENT_SCRAPE_SYMBOL_LIMIT ?? '10', 10)
   ),
   /** Agent scrape — symbols per LLM request */
   agentScrapeBatchSize: Math.max(1, parseInt(process.env.AGENT_SCRAPE_BATCH_SIZE ?? '5', 10)),

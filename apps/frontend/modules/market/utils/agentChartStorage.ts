@@ -47,6 +47,15 @@ export function getAgentChartBundleFreshness(
   return 'expired';
 }
 
+export function clearAgentChartBundle(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    console.info('[agent-charts] localStorage cleared (new scrape)');
+  } catch (err) {
+    console.warn('[agent-charts] localStorage clear failed', err);
+  }
+}
+
 export function loadAgentChartBundle(): AgentChartLocalBundle | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

@@ -9,6 +9,7 @@ import {
   Gauge,
   LineChart,
   FlaskConical,
+  GitCompare,
 } from 'lucide-react';
 import {
   MarketDataProvider,
@@ -22,6 +23,7 @@ import {
   DataSourcesView,
   EstimateEvalDashboard,
   PromptEvalDashboard,
+  PromptAbDashboard,
 } from '@/modules/market';
 import { AIInsightsProvider } from '@/modules/ai-insights';
 import { PortfolioProvider } from '@/modules/portfolio';
@@ -32,6 +34,7 @@ import { AIInsights } from '@/modules/ai-insights';
 import { Portfolio } from '@/modules/portfolio';
 import { AuthProvider, useAuth } from '@/modules/auth';
 import { PromptEvalRunProvider } from '@/modules/market/controllers/PromptEvalRunProvider';
+import { PromptAbRunProvider } from '@/modules/market/controllers/PromptAbRunProvider';
 import { Button } from '@/components/ui/button';
 
 type View = AppViewId;
@@ -43,7 +46,7 @@ function AppContent({
   currentView: View;
   setCurrentView: (view: View) => void;
 }) {
-  const { lastUpdated, dataMode, quoteDataMode, liveProvider } = useMarketData();
+  const { lastUpdated, dataMode, liveProvider } = useMarketData();
   const { loginAvailable, authenticated, logout, requestLogin } = useAuth();
   const liveLabel =
     dataMode === 'live'
@@ -51,7 +54,7 @@ function AppContent({
         ? 'Live (Yahoo)'
         : 'Live (Tiingo)'
       : dataMode === 'agent'
-        ? `Agent · ${quoteDataMode === 'live' ? 'Live quotes' : 'Mock quotes'}`
+        ? 'Agent · LLM charts'
         : 'Mock catalog';
   const formatTime = (date: Date | null) => {
     if (!date) return '';
@@ -68,6 +71,7 @@ function AppContent({
     { id: 'estimate-eval' as View, label: 'Estimate eval', icon: Gauge },
     { id: 'chart-eval' as View, label: 'Agent run history', icon: LineChart },
     { id: 'prompt-eval' as View, label: 'Eval prompt test', icon: FlaskConical },
+    { id: 'prompt-ab' as View, label: 'Prompt A/B', icon: GitCompare },
   ];
 
   return (
@@ -156,6 +160,7 @@ function AppContent({
         {currentView === 'estimate-eval' && <EstimateEvalDashboard />}
         {currentView === 'chart-eval' && <ChartEvalDashboard />}
         {currentView === 'prompt-eval' && <PromptEvalDashboard />}
+        {currentView === 'prompt-ab' && <PromptAbDashboard />}
       </main>
       <AgentQueueFloat />
     </div>
@@ -178,9 +183,11 @@ function AppWithNavigation() {
 export default function App() {
   return (
     <AuthProvider>
-      <PromptEvalRunProvider>
-        <AppWithNavigation />
-      </PromptEvalRunProvider>
+      <PromptAbRunProvider>
+        <PromptEvalRunProvider>
+          <AppWithNavigation />
+        </PromptEvalRunProvider>
+      </PromptAbRunProvider>
     </AuthProvider>
   );
 }

@@ -30,6 +30,7 @@ import { persistEstimateEvalRecord } from '../utils/estimateEvalStorage';
 import { persistChartEvalRecord } from '../utils/chartEvalStorage';
 import { logStockCacheFromApi } from '../utils/marketStockCacheLog';
 import {
+  clearAgentChartBundle,
   getAgentChartBundleFreshness,
   loadAgentChartBundle,
 } from '../utils/agentChartStorage';
@@ -59,7 +60,8 @@ export type AppViewId =
   | 'data-sources'
   | 'estimate-eval'
   | 'chart-eval'
-  | 'prompt-eval';
+  | 'prompt-eval'
+  | 'prompt-ab';
 
 interface MarketDataContextType {
   stocks: StockQuote[];
@@ -427,6 +429,7 @@ export function MarketDataProvider({
   const finishAgentJob = useCallback(
     async (job: AgentScrapeJob) => {
       if (job.usage) setAgentScrapeUsage(job.usage);
+      clearAgentChartBundle();
       try {
         await agentJobApi.loadChartCache();
       } catch (err) {
@@ -498,7 +501,6 @@ export function MarketDataProvider({
           tier: selectedAgentTier,
           forceLive,
           chartsOnly: true,
-          anchorQuotes: stocks.length > 0 ? stocks : undefined,
         });
         setAgentJob(job);
         setAgentJobId(job.id);
@@ -517,7 +519,7 @@ export function MarketDataProvider({
         setErrorCode(err instanceof ApiError ? err.code ?? 'AGENT_SCRAPE_FAILED' : 'AGENT_SCRAPE_FAILED');
       }
     },
-    [pollAgentJob, selectedAgentTier, stocks]
+    [pollAgentJob, selectedAgentTier]
   );
 
   const cancelAgentScrape = useCallback(async () => {
@@ -633,20 +635,15 @@ export function MarketDataProvider({
       await refreshMarketData({
         silent: true,
         forMode: 'agent',
-        quoteDataMode,
-        agentTier: last?.tier,
         keepAgentPanel: true,
+        agentTier: last?.tier,
       });
     } catch (err) {
-      console.warn('[market-stocks] agent mode silent quote load failed — dashboard may be empty', err);
-      setWarnings(prev => [
-        ...prev,
-        'Could not load live quotes on this device. Use Refresh or confirm the same API URL and Firebase as device A.',
-      ]);
+      console.warn('[market-stocks] agent mode catalog load failed', err);
     }
 
     await checkAgentChartStaleness();
-  }, [checkAgentChartStaleness, loadAgentEstimate, quoteDataMode, refreshMarketData, restoreAgentJob]);
+  }, [checkAgentChartStaleness, loadAgentEstimate, refreshMarketData, restoreAgentJob]);
 
   const loadFromAgentCache = useCallback(async () => {
     setAgentPendingConfirm(false);

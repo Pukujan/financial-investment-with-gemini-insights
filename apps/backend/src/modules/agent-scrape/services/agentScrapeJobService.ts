@@ -26,7 +26,11 @@ import { normalizeSeriesBySymbol } from '../../market/services/marketSeriesUtils
 import {
   timeSeriesFromYahooQuotes,
 } from '../../market/services/yahooProvider.js';
-import { resolveYahooChartQuotes } from '../../market/services/marketService.js';
+import {
+  clearAgentChartTimeseriesMemory,
+  loadAgentChartCacheIntoMarket,
+  resolveYahooChartQuotes,
+} from '../../market/services/marketService.js';
 import { estimateAgentScrape } from '../../ai-estimate/services/aiEstimateService.js';
 import {
   buildEstimateEval,
@@ -37,8 +41,30 @@ import { retrieveRagForSymbols } from './ragService.js';
 
 const MAX_JOB_STEPS = 64;
 const jobs = new Map<string, AgentScrapeJob & { cancelRequested?: boolean }>();
-const jobAnchorQuotes = new Map<string, StockQuote[]>();
 let activeJobId: string | null = null;
+
+function quotesFromChartSeries(
+  seriesLlm: Record<string, import('@investai/shared').TimeSeriesData[]>
+): StockQuote[] {
+  return Object.entries(seriesLlm)
+    .filter(([, series]) => series?.length)
+    .map(([sym, series]) => {
+      const last = series[series.length - 1]!;
+      const close = last.close;
+      return {
+        symbol: sym,
+        name: sym,
+        price: close,
+        change: 0,
+        changePercent: 0,
+        high: last.high,
+        low: last.low,
+        open: last.open,
+        previousClose: close,
+        volume: String(last.volume ?? 0),
+      };
+    });
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -85,7 +111,6 @@ export function createAgentScrapeJob(options: {
   tier: AiCostTier;
   forceLive: boolean;
   chartsOnly?: boolean;
-  anchorQuotes?: StockQuote[];
 }): AgentScrapeJob {
   if (activeJobId) {
     const existing = jobs.get(activeJobId);
@@ -136,28 +161,7 @@ export function createAgentScrapeJob(options: {
   };
 
   jobs.set(job.id, job);
-  if (chartsOnly && options.anchorQuotes?.length) {
-    jobAnchorQuotes.set(job.id, options.anchorQuotes);
-  }
   return getAgentJob(job.id)!;
-}
-
-async function resolveChartsOnlyQuotes(jobId: string): Promise<StockQuote[]> {
-  const fromRequest = jobAnchorQuotes.get(jobId);
-  if (fromRequest?.length) {
-    jobAnchorQuotes.delete(jobId);
-    return fromRequest;
-  }
-
-  const { getAllStocks } = await import('../../market/services/marketService.js');
-  const symbolSet = new Set(getAgentSymbols().map(s => s.toUpperCase()));
-  const { stocks } = await getAllStocks();
-  const matched = stocks.filter(s => symbolSet.has(s.symbol.toUpperCase()));
-  if (matched.length > 0) return matched;
-
-  throw new Error(
-    'No market quotes available for chart job — load Live or Mock quotes first, or pass anchorQuotes'
-  );
 }
 
 export function cancelAgentJob(jobId: string): AgentScrapeJob | null {
@@ -244,6 +248,7 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
   const modelId = getTierModelId(job.tier);
 
   if (forceLive) {
+    clearAgentChartTimeseriesMemory();
     invalidateAgentScrapeCache();
   }
 
@@ -271,20 +276,9 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     job.completedAt = nowIso();
     touch(job);
     activeJobId = null;
-    jobAnchorQuotes.delete(jobId);
   };
 
   try {
-    if (chartsOnly) {
-      try {
-        allQuotes = await resolveChartsOnlyQuotes(jobId);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Could not load market quotes';
-        failJob('failed', message);
-        return;
-      }
-    }
-
     const batchSteps = job.steps.filter(s => s.id.startsWith('batch-'));
     if (batchSteps.length > MAX_JOB_STEPS) {
       failJob('failed', 'Too many batches — increase batch size or lower symbol limit');
@@ -340,9 +334,7 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     const seriesLlm: Record<string, import('@investai/shared').TimeSeriesData[]> = {};
 
     const chartSteps = job.steps.filter(s => s.id.startsWith('chart-batch-'));
-    const anchorPrices = Object.fromEntries(
-      allQuotes.map(q => [q.symbol.toUpperCase(), q.price])
-    );
+    const anchorPrices: Record<string, number> = {};
 
     for (let i = 0; i < chartSteps.length; i++) {
       if (job.cancelRequested || jobTimedOut(startedMs)) break;
@@ -461,16 +453,31 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     }
 
     const seriesBySymbol: Record<string, import('@investai/shared').TimeSeriesData[]> = {};
-    for (const q of allQuotes) {
-      const sym = q.symbol.toUpperCase();
-      seriesBySymbol[sym] =
-        seriesLlm[sym]?.length ? seriesLlm[sym]! : seriesSynthetic[sym]!;
+    if (chartsOnly) {
+      for (const [sym, series] of Object.entries(seriesLlm)) {
+        if (series?.length) seriesBySymbol[sym.toUpperCase()] = series;
+      }
+    } else {
+      for (const q of allQuotes) {
+        const sym = q.symbol.toUpperCase();
+        seriesBySymbol[sym] =
+          seriesLlm[sym]?.length ? seriesLlm[sym]! : seriesSynthetic[sym]!;
+      }
+    }
+
+    if (chartsOnly && allQuotes.length === 0) {
+      allQuotes = quotesFromChartSeries(seriesLlm);
     }
 
     const normalizedSeries = normalizeSeriesBySymbol(seriesBySymbol);
     const agentBulk = { quotes: allQuotes, seriesBySymbol: normalizedSeries };
     setMemoryCached(bulkCacheKey(), agentBulk);
     void writeAgentBulkToFirestore(agentBulk);
+    try {
+      await loadAgentChartCacheIntoMarket();
+    } catch (err) {
+      console.warn('[agent-scrape] chart timeseries hydrate after job failed', err);
+    }
 
     const newsFromCache = job.steps.find(s => s.id === 'news')?.status === 'skipped';
     const actualCostUsd =
@@ -496,12 +503,11 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
     };
 
     const failedSteps = job.steps.filter(s => s.status === 'failed').length;
-    if (allQuotes.length === 0) {
+    const chartCount = Object.values(seriesBySymbol).filter(s => s?.length).length;
+    if (chartsOnly ? chartCount === 0 : allQuotes.length === 0) {
       failJob(
         'failed',
-        chartsOnly
-          ? 'No market quotes available for chart job'
-          : 'No quotes returned from agent scrape'
+        chartsOnly ? 'No LLM charts generated — check OpenRouter and retry' : 'No quotes returned from agent scrape'
       );
       return;
     }
@@ -550,7 +556,6 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
   } catch (err) {
     failJob('failed', err instanceof Error ? err.message : 'Job failed');
   } finally {
-    jobAnchorQuotes.delete(jobId);
     if (activeJobId === jobId) activeJobId = null;
   }
 }
