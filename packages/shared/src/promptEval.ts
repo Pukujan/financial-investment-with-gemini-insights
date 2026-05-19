@@ -67,7 +67,9 @@ export interface PromptEvalExperiment {
   evalWindowDays?: number;
   comparisonMode?: PromptEvalComparisonMode;
   priceConvention: ChartPriceConvention;
-  goldenReference: 'yahoo';
+  /** Reference price source for comparison (Yahoo EOD or client/server cache). */
+  goldenReference: 'yahoo' | 'cache';
+  groundTruthSource?: string;
   rag: PromptEvalRagMeta;
   symbols: string[];
   golden: PromptEvalGoldenSymbol[];
@@ -140,6 +142,7 @@ export interface PromptEvalJob {
   status: PromptEvalJobStatus;
   promptVersion: string;
   ragEnabled: boolean;
+  symbolLimit?: number;
   phaseLabel: string;
   progress: { completed: number; total: number };
   setupSteps: PromptEvalJobSetupStep[];

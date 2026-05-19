@@ -8,6 +8,8 @@ export type MarketCacheProvider =
   | 'agent'
   | 'openrouter-agent';
 
+import type { MarketStocksCacheSource } from './marketCacheLog.js';
+
 export interface MarketFetchMeta {
   dataMode: MarketDataMode;
   provider: MarketCacheProvider;
@@ -18,6 +20,11 @@ export interface MarketFetchMeta {
   fromCache?: boolean;
   cachedAt?: string;
   cacheTtlHours?: number;
+  /** Server cache layer used for this response (not browser localStorage). */
+  cacheSource?: MarketStocksCacheSource;
+  cacheNote?: string;
+  /** 30d OHLC per symbol — persisted to browser localStorage on the client. */
+  seriesBySymbol?: Record<string, TimeSeriesData[]>;
 }
 
 export interface MarketNewsMeta {

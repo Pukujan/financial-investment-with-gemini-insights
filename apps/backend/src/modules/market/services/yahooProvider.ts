@@ -4,6 +4,7 @@ import { memoryCacheTtl } from '../../../config/cache.js';
 import { env } from '../../../config/env.js';
 import { formatVolume } from '../../../utils/formatVolume.js';
 import { cacheKey, getMemoryCached, setMemoryCached } from '../../../utils/memoryCache.js';
+import { logYahooChart } from './marketCacheLog.js';
 
 /** Node port of [yfinance](https://github.com/ranaroussi/yfinance) — same Yahoo data via yahoo-finance2. */
 export const YAHOO_PROVIDER = 'yahoo' as const;
@@ -67,7 +68,10 @@ export async function fetchYahooChartQuotes(symbol: string): Promise<ChartQuote[
   const key = symbol.trim().toUpperCase();
   const memKey = yahooChartCacheKey(key);
   const cached = getMemoryCached<ChartQuote[]>(memKey, memoryCacheTtl.marketTimeSeriesMs);
-  if (cached) return cached;
+  if (cached) {
+    logYahooChart('hit', { symbol: key, source: 'memory', bars: cached.length });
+    return cached;
+  }
 
   const existing = chartInFlight.get(key);
   if (existing) return existing;
@@ -75,6 +79,7 @@ export async function fetchYahooChartQuotes(symbol: string): Promise<ChartQuote[
   const request = fetchYahooChartQuotesOnce(symbol)
     .then(quotes => {
       setMemoryCached(memKey, quotes);
+      logYahooChart('provider-fetch', { symbol: key, source: 'provider-yahoo', bars: quotes.length });
       return quotes;
     })
     .finally(() => {

@@ -12,7 +12,9 @@ import type {
 import {
   AI_COST_TIERS,
   CHART_EOD_CONVENTION,
+  PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
   PROMPT_EVAL_WINDOW_DAYS,
+  type PromptEvalGroundTruthPayload,
   buildDailyVsLive,
   buildEodSeriesFromQuote,
   pctDiff,
@@ -26,8 +28,7 @@ import {
 import type { Request } from 'express';
 import { firestoreCollections } from '../../../config/cache.js';
 import { getTierModelId } from '../../ai-estimate/services/modelTiers.js';
-import { resolveYahooChartQuotes } from '../../market/services/marketService.js';
-import { quoteFromYahooQuotes, timeSeriesFromYahooQuotes } from '../../market/services/yahooProvider.js';
+import { resolvePromptEvalGroundTruth } from './promptEvalGroundTruth.js';
 import {
   loadEvalFromAllSources,
   mergeEvalById,
@@ -43,7 +44,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const MAX_HISTORY = 50;
-const DEFAULT_SYMBOL_LIMIT = 5;
+const DEFAULT_SYMBOL_LIMIT = PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT;
 const EVAL_WINDOW_DAYS = PROMPT_EVAL_WINDOW_DAYS;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HISTORY_FILE = path.resolve(__dirname, '../../../../.data/prompt-eval-history.json');
@@ -136,6 +137,7 @@ export async function runPromptEvalWithProgress(
     ragEnabled?: boolean;
     symbolLimit?: number;
     experimentId?: string;
+    groundTruth?: PromptEvalGroundTruthPayload;
   },
   hooks: PromptEvalProgressHooks = noopHooks
 ): Promise<{ experiment: PromptEvalExperiment; summary: PromptEvalTestSummary }> {
@@ -145,21 +147,15 @@ export async function runPromptEvalWithProgress(
 
   const experimentId = options.experimentId ?? randomUUID();
   const symbols = getAgentSymbols().slice(0, options.symbolLimit ?? DEFAULT_SYMBOL_LIMIT);
-  const golden: PromptEvalGoldenSymbol[] = [];
-  const yahooSeriesBySymbol: Record<string, ReturnType<typeof timeSeriesFromYahooQuotes>> = {};
 
-  hooks.onSetupStart('golden', 'Fetch Yahoo golden (30d EOD)');
-  for (const sym of symbols) {
-    const bars = await resolveYahooChartQuotes(sym);
-    const quote = quoteFromYahooQuotes(sym, bars);
-    yahooSeriesBySymbol[sym.toUpperCase()] = timeSeriesFromYahooQuotes(bars, EVAL_WINDOW_DAYS);
-    golden.push({
-      symbol: sym.toUpperCase(),
-      yahooClose: quote.price,
-      yahooPreviousClose: quote.previousClose,
-    });
-  }
-  hooks.onSetupDone('golden', `${symbols.length} symbols`);
+  hooks.onSetupStart('ground-truth', 'Load reference EOD (localStorage / Firestore / Yahoo)');
+  const {
+    golden,
+    seriesBySymbol: yahooSeriesBySymbol,
+    groundTruthSource,
+    goldenReference,
+  } = await resolvePromptEvalGroundTruth(symbols, options.groundTruth);
+  hooks.onSetupDone('ground-truth', `${symbols.length} symbols · ${groundTruthSource}`);
 
   const goldenHint = golden
     .map(g => `${g.symbol}: last EOD close $${g.yahooClose.toFixed(2)}`)
@@ -275,9 +271,10 @@ export async function runPromptEvalWithProgress(
     evalWindowDays: EVAL_WINDOW_DAYS,
     comparisonMode: '30d-eod',
     priceConvention: CHART_EOD_CONVENTION,
-    goldenReference: 'yahoo',
+    goldenReference,
+    groundTruthSource,
     rag: ragMeta,
-    symbols,
+    symbols: golden.map(g => g.symbol),
     golden,
     tiers,
     improvement: {
@@ -350,6 +347,7 @@ export async function runPromptEvalTest(
     promptVersion: string;
     ragEnabled?: boolean;
     symbolLimit?: number;
+    groundTruth?: PromptEvalGroundTruthPayload;
   }
 ): Promise<PromptEvalTestResult> {
   assertPromptEvalCooldown(req);

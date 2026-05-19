@@ -16,11 +16,16 @@ export function getQuoteDataMode(): QuoteDataMode {
   return runtimeQuoteMode;
 }
 
-export function setMarketDataMode(mode: MarketDataMode): void {
+export function setMarketDataMode(
+  mode: MarketDataMode,
+  options?: { preserveCache?: boolean }
+): void {
   if (mode !== runtimeMode) {
     runtimeMode = mode;
-    clearMemoryCache();
-    deleteMemoryCacheByPrefix('market:');
+    if (!options?.preserveCache) {
+      clearMemoryCache();
+      deleteMemoryCacheByPrefix('market:');
+    }
   }
 }
 

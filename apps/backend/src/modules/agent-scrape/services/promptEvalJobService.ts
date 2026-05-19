@@ -1,5 +1,9 @@
 import { randomUUID } from 'crypto';
-import type { PromptEvalJob, PromptEvalJobTierStep } from '@investai/shared';
+import type {
+  PromptEvalGroundTruthPayload,
+  PromptEvalJob,
+  PromptEvalJobTierStep,
+} from '@investai/shared';
 import { AI_COST_TIER_LABELS, AI_COST_TIERS } from '@investai/shared';
 import type { Request } from 'express';
 import {
@@ -9,6 +13,7 @@ import {
 import { runPromptEvalWithProgress, type PromptEvalProgressHooks } from './promptEvalService.js';
 
 const jobs = new Map<string, PromptEvalJob>();
+const jobGroundTruth = new Map<string, PromptEvalGroundTruthPayload>();
 let activeJobId: string | null = null;
 
 function nowIso(): string {
@@ -41,6 +46,7 @@ export function createPromptEvalJob(options: {
   promptVersion: string;
   ragEnabled?: boolean;
   symbolLimit?: number;
+  groundTruth?: PromptEvalGroundTruthPayload;
 }): PromptEvalJob {
   if (activeJobId) {
     const existing = jobs.get(activeJobId);
@@ -51,7 +57,11 @@ export function createPromptEvalJob(options: {
 
   const ragEnabled = options.ragEnabled === true;
   const setupSteps = [
-    { id: 'golden', label: 'Fetch Yahoo golden (30d EOD)', status: 'pending' as const },
+    {
+      id: 'ground-truth',
+      label: 'Load reference EOD (cache / Yahoo)',
+      status: 'pending' as const,
+    },
     ...(ragEnabled
       ? [{ id: 'rag', label: 'RAG retrieval', status: 'pending' as const }]
       : []),
@@ -62,6 +72,7 @@ export function createPromptEvalJob(options: {
     status: 'queued',
     promptVersion: options.promptVersion,
     ragEnabled,
+    symbolLimit: options.symbolLimit,
     phaseLabel: 'Queued',
     progress: { completed: 0, total: setupSteps.length + AI_COST_TIERS.length },
     setupSteps,
@@ -71,6 +82,7 @@ export function createPromptEvalJob(options: {
   };
 
   jobs.set(job.id, job);
+  if (options.groundTruth) jobGroundTruth.set(job.id, options.groundTruth);
   return job;
 }
 
@@ -160,7 +172,9 @@ async function runPromptEvalJob(jobId: string, req: Request): Promise<void> {
       {
         promptVersion: job.promptVersion,
         ragEnabled: job.ragEnabled,
+        symbolLimit: job.symbolLimit,
         experimentId: job.id,
+        groundTruth: jobGroundTruth.get(jobId),
       },
       buildHooks(job)
     );
@@ -179,6 +193,7 @@ async function runPromptEvalJob(jobId: string, req: Request): Promise<void> {
     job.completedAt = nowIso();
     touch(job);
   } finally {
+    jobGroundTruth.delete(jobId);
     if (activeJobId === jobId) activeJobId = null;
   }
 }

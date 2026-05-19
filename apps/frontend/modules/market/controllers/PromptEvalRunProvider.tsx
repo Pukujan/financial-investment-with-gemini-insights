@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { PromptEvalJob, PromptEvalTestSummary } from '@investai/shared';
+import type { PromptEvalGroundTruthPayload, PromptEvalJob, PromptEvalTestSummary } from '@investai/shared';
+import { PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT } from '@investai/shared';
+import { buildGroundTruthFromLocalBundle } from '../utils/marketStockStorage';
 import { ApiError } from '../../../shared/api/http';
 import { promptEvalJobApi } from '../services/promptEvalJobApi';
 
@@ -22,6 +24,8 @@ interface PromptEvalRunContextValue {
     promptVersion: string;
     ragEnabled?: boolean;
     symbolLimit?: number;
+    symbols?: string[];
+    groundTruth?: PromptEvalGroundTruthPayload;
   }) => Promise<PromptEvalJob>;
   clearPromptEvalJob: () => void;
 }
@@ -68,11 +72,32 @@ export function PromptEvalRunProvider({ children }: { children: ReactNode }) {
       promptVersion: string;
       ragEnabled?: boolean;
       symbolLimit?: number;
+      symbols?: string[];
     }) => {
       setPromptEvalRunning(true);
       setLastSummary(null);
       try {
-        const job = await promptEvalJobApi.startJob(options);
+        const symbolLimit = options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT;
+        const symbols =
+          options.symbols?.slice(0, symbolLimit) ??
+          ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA'].slice(0, symbolLimit);
+        const groundTruth =
+          options.groundTruth ?? buildGroundTruthFromLocalBundle(symbols) ?? undefined;
+        if (groundTruth) {
+          console.info('[market-stocks] prompt eval using localStorage ground truth', {
+            cachedAt: groundTruth.cachedAt,
+            symbols: groundTruth.symbols.map(s => s.symbol),
+          });
+        } else {
+          console.warn(
+            '[market-stocks] prompt eval: no fresh localStorage — server will use Firestore/Yahoo'
+          );
+        }
+        const job = await promptEvalJobApi.startJob({
+          ...options,
+          symbolLimit,
+          groundTruth,
+        });
         setPromptEvalJob(job);
         jobIdRef.current = job.id;
         void pollJob(job.id);
