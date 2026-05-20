@@ -29,6 +29,7 @@ import { PromptAbRunDetail } from './eval/PromptAbRunDetail';
 import { UsageLimitCooldownBanner } from './eval/UsageLimitCooldownBanner';
 import { isMarketStockBundleFresh, loadMarketStockBundle } from '../utils/marketStockStorage';
 import { formatUsd } from '../../ai-estimate/utils/formatUsd';
+import { ApiError } from '../../../shared/api/http';
 import type { PromptAbCostEstimateSnapshot } from '@investai/shared';
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
@@ -91,7 +92,17 @@ export function PromptAbDashboard() {
         return records[0]?.id ?? null;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load A/B history');
+      const missingRoutes =
+        err instanceof ApiError &&
+        err.status === 404 &&
+        (err.code === 'API_INVALID_JSON' || /Cannot GET/i.test(err.message));
+      setError(
+        missingRoutes
+          ? 'Backend API is missing Prompt A/B routes (stale Railway deploy). Redeploy the backend service from latest main, then confirm GET /api/health includes gitCommitSha starting with 29b7fb9.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not load A/B history'
+      );
     } finally {
       setLoading(false);
     }

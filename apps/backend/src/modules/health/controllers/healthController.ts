@@ -29,11 +29,18 @@ export async function getHealth(_req: Request, res: Response): Promise<void> {
     status = 'degraded';
   }
 
+  const gitCommitSha =
+    process.env.RAILWAY_GIT_COMMIT_SHA?.trim() ||
+    process.env.RAILWAY_GIT_COMMIT?.trim() ||
+    process.env.GIT_COMMIT?.trim() ||
+    undefined;
+
   const healthStatus: HealthStatus = {
     status,
     timestamp: new Date().toISOString(),
     uptime: Math.floor((Date.now() - startTime) / 1000),
     version: env.appVersion,
+    gitCommitSha,
     checks: {
       firebase: firebaseConfigured ? 'ok' : 'unconfigured',
       openrouter: openRouterConfigured ? 'ok' : 'unconfigured',

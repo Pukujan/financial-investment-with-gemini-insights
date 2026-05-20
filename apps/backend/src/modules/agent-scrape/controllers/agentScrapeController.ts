@@ -143,11 +143,13 @@ export const getStatus = asyncHandler(async (_req: Request, res: Response) => {
 export const postLoadChartCache = asyncHandler(async (_req: Request, res: Response) => {
   const result = await loadAgentChartCacheIntoMarket();
   if (!result.loaded) {
-    throw new AppError(
-      'No agent chart cache found. Run a chart scrape job first, or wait for it to finish.',
-      404,
-      'AGENT_CHART_CACHE_EMPTY'
-    );
+    sendSuccess(res, {
+      ...result,
+      message:
+        'No agent chart cache in server memory yet. Run a chart scrape job first (or wait for Firestore hydrate).',
+      code: 'AGENT_CHART_CACHE_EMPTY',
+    });
+    return;
   }
   sendSuccess(res, result);
 });

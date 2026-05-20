@@ -173,6 +173,8 @@ export interface HealthStatus {
   timestamp: string;
   uptime: number;
   version: string;
+  /** Set on Railway from RAILWAY_GIT_COMMIT_SHA — verify deploy matches GitHub main. */
+  gitCommitSha?: string;
   checks: {
     firebase: 'ok' | 'unconfigured' | 'error';
     openrouter: 'ok' | 'unconfigured';
