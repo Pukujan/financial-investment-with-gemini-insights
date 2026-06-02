@@ -131,6 +131,7 @@ export type {
 export {
   PROMPT_AB_VERSION_A_DEFAULT,
   PROMPT_AB_VERSION_B_DEFAULT,
+  PROMPT_AB_SYMBOL_LIMIT,
 } from './promptAbTest.js';
 
 export type {
@@ -155,3 +156,23 @@ export {
   buildPromptAbCostEval,
   buildPromptAbEfficiencyCompare,
 } from './promptAbTest.js';
+
+export {
+  MARKET_PROVIDER,
+  LIVE_QUOTE_PROVIDERS,
+  isLiveQuoteProvider,
+  isMockCatalogProvider,
+  dataModeAllowsMockCatalog,
+  dataModeUsesLiveQuotes,
+} from './contracts/market.js';
+export type { LiveQuoteProvider } from './contracts/market.js';
+
+export {
+  CHART_SCRAPE_BAR_COUNT,
+  CHART_SCRAPE_MIN_ALIGNED_BARS,
+  CHART_SCRAPE_MAX_ANCHOR_DEVIATION_PCT,
+  CHART_SCRAPE_MAX_MEAN_DAILY_DEVIATION_PCT,
+  CHART_SCRAPE_V21,
+  CHART_SCRAPE_V16,
+  chartScrapeRequiresSourceUrls,
+} from './contracts/chartScrape.js';

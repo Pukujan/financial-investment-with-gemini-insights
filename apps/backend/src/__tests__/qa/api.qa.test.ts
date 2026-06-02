@@ -99,7 +99,7 @@ describe('QA API Suite', () => {
         articles: mockNews,
         meta: {
           dataMode: 'live',
-          provider: 'tiingo',
+          provider: 'yahoo',
           count: mockNews.length,
           fromCache: false,
         },
@@ -109,7 +109,7 @@ describe('QA API Suite', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data[0].title).toBe('Test News');
-      expect(res.body.meta.provider).toBe('tiingo');
+      expect(res.body.meta.provider).toBe('yahoo');
     });
 
     it('GET /api/market/stocks/:symbol/timeseries returns series', async () => {
@@ -154,7 +154,7 @@ describe('QA API Suite', () => {
     it('GET /api/market/news returns 503 when live news forbidden', async () => {
       vi.spyOn(marketService, 'getMarketNewsWithMeta').mockRejectedValue(
         new AppError(
-          'Live news requires Tiingo News API',
+          'Live news unavailable',
           503,
           'MARKET_NEWS_FORBIDDEN'
         )
@@ -164,7 +164,7 @@ describe('QA API Suite', () => {
 
       expect(res.status).toBe(503);
       expect(res.body.success).toBe(false);
-      expect(res.body.error).toMatch(/Tiingo News/i);
+      expect(res.body.error).toMatch(/news unavailable/i);
     });
 
     it('POST /api/ai/stocks/:symbol/prediction requires historicalData', async () => {

@@ -134,10 +134,10 @@ export interface PortfolioDocument {
   lastUpdated: string;
 }
 
-/** `live` = Tiingo API. `mock` = static catalog. `agent` = LLM scrape agents (OpenRouter). */
+/** `live` = Yahoo Finance API. `mock` = static catalog. `agent` = LLM scrape agents (OpenRouter). */
 export type MarketDataMode = 'live' | 'mock' | 'agent';
 
-export type MarketLiveProvider = 'tiingo' | 'yahoo';
+export type MarketLiveProvider = 'yahoo';
 export type MarketAgentProvider = 'openrouter-agent';
 
 export type MarketProvider = MarketLiveProvider | MarketAgentProvider | 'mock-catalog';
@@ -154,6 +154,8 @@ export interface MarketDataSettings {
   liveReachable: boolean | null;
   liveProbeError?: string;
   stockFetchLimit: number;
+  /** Max symbols shown in agent mode and per chart scrape job */
+  agentScrapeSymbolLimit: number;
   /** Hours before live data is refetched (default 24) */
   cacheTtlHours: number;
   /** ISO time of last successful live quote cache, if any */

@@ -108,7 +108,7 @@ export async function getAIInsightsWithMeta(
       }
       if (newsArticlesUsed === 0) {
         warnings.push(
-          'No live news articles available — insights will use stock data only (Tiingo News API may require a paid plan).'
+          'No live news articles available — insights will use stock data only.'
         );
       }
     } catch (error) {
@@ -120,7 +120,7 @@ export async function getAIInsightsWithMeta(
         warnings.push(message);
         if (error instanceof AppError && error.code === 'MARKET_LIVE_UNAVAILABLE') {
           warnings.push(
-            'Generating insights from stock data only. Upgrade Tiingo News or switch to Mock mode for full news context.'
+            'Generating insights from stock data only until a live news provider is configured.'
           );
         }
       } else {

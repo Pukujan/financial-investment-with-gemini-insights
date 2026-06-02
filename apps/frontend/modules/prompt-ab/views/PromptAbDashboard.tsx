@@ -11,25 +11,29 @@ import {
   AI_COST_TIERS,
   PROMPT_AB_VERSION_A_DEFAULT,
   PROMPT_AB_VERSION_B_DEFAULT,
+  PROMPT_AB_SYMBOL_LIMIT,
   PROMPT_EVAL_WINDOW_DAYS,
 } from '@investai/shared';
+import { useAuth } from '@/modules/auth/controllers/AuthProvider';
+import { useMarketData } from '@/modules/market/controllers/MarketDataProvider';
+import { EvalRunLogTable, type EvalLogRow } from '@/modules/market/views/eval/EvalRunLogTable';
+import { EvalRunTimeline, type EvalTimelineItem } from '@/modules/market/views/eval/EvalRunTimeline';
+import { UsageLimitCooldownBanner } from '@/modules/market/views/eval/UsageLimitCooldownBanner';
+import { loadEvalWithSync } from '@/modules/market/utils/evalStorageSync';
+import {
+  isMarketStockBundleFresh,
+  loadMarketStockBundle,
+} from '@/modules/market/utils/marketStockStorage';
+import { formatUsd } from '@/modules/ai-estimate/utils/formatUsd';
+import { ApiError } from '@/shared/api/http';
+import { usePromptAbRun } from '../controllers/PromptAbRunProvider';
 import { promptAbApi } from '../services/promptAbApi';
 import {
   loadLocalPromptAbTests,
   mergePromptAbHistory,
   persistPromptAbExperiment,
 } from '../utils/promptAbStorage';
-import { loadEvalWithSync } from '../utils/evalStorageSync';
-import { useAuth } from '../../auth/controllers/AuthProvider';
-import { usePromptAbRun } from '../controllers/PromptAbRunProvider';
-import { useMarketData } from '../controllers/MarketDataProvider';
-import { EvalRunTimeline, type EvalTimelineItem } from './eval/EvalRunTimeline';
-import { EvalRunLogTable, type EvalLogRow } from './eval/EvalRunLogTable';
-import { PromptAbRunDetail } from './eval/PromptAbRunDetail';
-import { UsageLimitCooldownBanner } from './eval/UsageLimitCooldownBanner';
-import { isMarketStockBundleFresh, loadMarketStockBundle } from '../utils/marketStockStorage';
-import { formatUsd } from '../../ai-estimate/utils/formatUsd';
-import { ApiError } from '../../../shared/api/http';
+import { PromptAbRunDetail } from './PromptAbRunDetail';
 import type { PromptAbCostEstimateSnapshot } from '@investai/shared';
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
@@ -94,8 +98,10 @@ export function PromptAbDashboard() {
     } catch (err) {
       const missingRoutes =
         err instanceof ApiError &&
-        err.status === 404 &&
-        (err.code === 'API_INVALID_JSON' || /Cannot GET/i.test(err.message));
+        (err.status === 404 || err.code === 'API_NOT_FOUND') &&
+        (err.code === 'API_NOT_FOUND' ||
+          err.code === 'API_INVALID_JSON' ||
+          /stale deploy|API route not found|Cannot (GET|POST)/i.test(err.message));
       setError(
         missingRoutes
           ? 'Backend API is missing Prompt A/B routes (stale Railway deploy). Redeploy the backend service from latest main, then confirm GET /api/health includes gitCommitSha starting with 29b7fb9.'
@@ -114,15 +120,15 @@ export function PromptAbDashboard() {
     void promptAbApi
       .getPromptCatalog()
       .then(res => {
-        const quote = res.catalog.filter(e => e.id === 'quote-scrape');
-        setCatalog(quote.map(e => ({ version: e.version, label: e.label })));
+        const chart = res.catalog.filter(e => e.id === 'chart-scrape');
+        setCatalog(chart.map(e => ({ version: e.version, label: e.label })));
       })
       .catch(() => setCatalog([]));
   }, [load, refreshCooldown]);
 
   useEffect(() => {
     void promptAbApi
-      .getEstimate({ tier, ragEnabled, symbolLimit: 3 })
+      .getEstimate({ tier, ragEnabled, symbolLimit: PROMPT_AB_SYMBOL_LIMIT })
       .then(setPreEstimate)
       .catch(() => setPreEstimate(null));
   }, [tier, ragEnabled]);
@@ -172,7 +178,13 @@ export function PromptAbDashboard() {
     setError(null);
     setLastSummary(null);
     try {
-      await startPromptAbTest({ versionA, versionB, tier, ragEnabled });
+      await startPromptAbTest({
+        versionA,
+        versionB,
+        tier,
+        ragEnabled,
+        symbolLimit: PROMPT_AB_SYMBOL_LIMIT,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'A/B test failed');
     }
@@ -203,10 +215,10 @@ export function PromptAbDashboard() {
             <h2 className="text-2xl font-semibold text-slate-900">Prompt A/B test</h2>
           </div>
           <p className="mt-2 text-sm text-slate-600 max-w-2xl">
-            Compare two <strong>quote-scrape</strong> prompt versions side-by-side against{' '}
-            <strong>Live mode cached EOD</strong> (same ground truth as the prompt eval tab).{' '}
-            <strong>v2 ({PROMPT_AB_VERSION_B_DEFAULT})</strong> is not used on the main dashboard — production stays on{' '}
-            {PROMPT_AB_VERSION_A_DEFAULT}.
+            Compare two <strong>chart-scrape</strong> prompts ({PROMPT_AB_SYMBOL_LIMIT} symbols ×{' '}
+            {PROMPT_EVAL_WINDOW_DAYS} session EOD bars each) against{' '}
+            <strong>Live cached / Yahoo</strong> ground truth. Default: v1 ({PROMPT_AB_VERSION_A_DEFAULT}) vs v3 web
+            scrape ({PROMPT_AB_VERSION_B_DEFAULT}).
           </p>
         </div>
         <button
@@ -229,7 +241,7 @@ export function PromptAbDashboard() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap gap-4 items-end">
         <label className="flex flex-col gap-1 text-xs text-slate-600">
-          Prompt A (production)
+          Prompt A (v1 baseline)
           <select
             value={versionA}
             onChange={e => setVersionA(e.target.value)}
@@ -247,7 +259,7 @@ export function PromptAbDashboard() {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-600">
-          Prompt B (v2 experimental)
+          Prompt B (v3 web EOD)
           <select
             value={versionB}
             onChange={e => setVersionB(e.target.value)}
@@ -297,7 +309,7 @@ export function PromptAbDashboard() {
           {promptAbRunning ? 'Running A/B…' : 'Run A/B test'}
         </button>
         <p className="text-xs text-slate-500 w-full">
-          {PROMPT_EVAL_WINDOW_DAYS}-day EOD comparison · one tier · shared ground truth snapshot · uses prompt-test cooldown.
+          {PROMPT_AB_SYMBOL_LIMIT} symbols · {PROMPT_EVAL_WINDOW_DAYS}-day EOD per symbol · one LLM call/symbol/arm · prompt-test cooldown.
         </p>
       </div>
 
@@ -371,8 +383,8 @@ export function PromptAbDashboard() {
 
       {selected && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Arm A quote dev" value={`${selected.armA.avgAbsQuoteDeviationPct.toFixed(2)}%`} />
-          <SummaryCard label="Arm B quote dev" value={`${selected.armB.avgAbsQuoteDeviationPct.toFixed(2)}%`} />
+          <SummaryCard label="Arm A last-close dev" value={`${selected.armA.avgAbsQuoteDeviationPct.toFixed(2)}%`} />
+          <SummaryCard label="Arm B last-close dev" value={`${selected.armB.avgAbsQuoteDeviationPct.toFixed(2)}%`} />
           <SummaryCard label="Winner" value={selected.winner.overall} />
           <SummaryCard
             label="Cost (actual)"

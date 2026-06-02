@@ -1,5 +1,5 @@
 import type { StockQuote, TimeSeriesData } from '@investai/shared';
-import { mockStocks } from '../../../data/mockData.js';
+import { mockStocks } from '../../../data/mockMarketData.js';
 
 export const MOCK_PROVIDER = 'mock-catalog' as const;
 

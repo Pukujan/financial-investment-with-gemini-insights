@@ -128,12 +128,12 @@ export interface YahooBulkResult {
 }
 
 function yahooBatchSize(): number {
-  const n = env.tiingoBatchSize;
+  const n = env.marketLiveBatchSize;
   return Number.isFinite(n) && n > 0 ? n : 5;
 }
 
 function yahooBatchDelayMs(): number {
-  const n = env.tiingoBatchDelayMs;
+  const n = env.marketLiveBatchDelayMs;
   return Number.isFinite(n) && n >= 0 ? n : 500;
 }
 

@@ -3,13 +3,18 @@ import { AGENT_CHART_TRADING_DAYS, lastTradingDayKeys } from '@investai/shared';
 import { resolveChartPrompt } from '@investai/prompts';
 import { env } from '../../../../config/env.js';
 import {
+  assertChartScrapeContract,
+  formatChartContractError,
+} from '../../../../contracts/chartScrapeResponse.js';
+import {
   callAiWithUsageFallback,
   mergeUsage,
   parseJsonFromText,
   type TokenUsage,
 } from '../../../../utils/aiClient.js';
 
-const CHART_MAX_TOKENS = 2048;
+const CHART_MAX_TOKENS_V21 = 4096;
+const CHART_MAX_TOKENS_DEFAULT = 2048;
 
 const EMPTY_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
@@ -53,14 +58,20 @@ function barRowToPoint(row: unknown): TimeSeriesData | null {
   };
 }
 
-function parseChartPayload(
-  text: string,
-  expectedSymbol: string
-): TimeSeriesData[] {
+interface ParsedChartPayload {
+  bars: unknown[];
+  payloadSymbol: string;
+  sources?: string[];
+  dataAttestation?: string;
+}
+
+function parseChartPayload(text: string, expectedSymbol: string): ParsedChartPayload {
   const sym = expectedSymbol.toUpperCase();
   const parsed = parseJsonFromText<{
     symbol?: string;
     bars?: unknown[];
+    sources?: string[];
+    dataAttestation?: string;
     series?: { symbol?: string; points?: Record<string, unknown>[]; bars?: unknown[] }[];
   }>(text);
 
@@ -95,7 +106,17 @@ function parseChartPayload(
     console.warn(`[chart-scrape] Expected ${sym}, got ${payloadSymbol}`);
   }
 
-  const points = bars
+  return {
+    bars,
+    payloadSymbol,
+    sources: Array.isArray(parsed.sources) ? parsed.sources.map(String) : undefined,
+    dataAttestation:
+      typeof parsed.dataAttestation === 'string' ? parsed.dataAttestation : undefined,
+  };
+}
+
+function barsToPoints(bars: unknown[]): TimeSeriesData[] {
+  return bars
     .map(row => {
       if (Array.isArray(row)) return barRowToPoint(row);
       if (row && typeof row === 'object') {
@@ -103,14 +124,7 @@ function parseChartPayload(
       }
       return null;
     })
-    .filter((p): p is TimeSeriesData => p != null)
-    .slice(-AGENT_CHART_TRADING_DAYS);
-
-  if (points.length < 10) {
-    throw new Error(`Too few chart bars for ${sym} (${points.length})`);
-  }
-
-  return points;
+    .filter((p): p is TimeSeriesData => p != null);
 }
 
 const TRADING_DAY_KEYS = () => lastTradingDayKeys(AGENT_CHART_TRADING_DAYS);
@@ -133,30 +147,75 @@ async function scrapeChartSymbol(
   symbol: string,
   anchorPrice: number | undefined,
   model?: string,
-  options?: { ragContext?: string; promptVersion?: string }
+  options?: {
+    ragContext?: string;
+    goldenHint?: string;
+    promptVersion?: string;
+    liveSeries?: TimeSeriesData[];
+  }
 ): Promise<{ series: TimeSeriesData[]; usage: TokenUsage }> {
   const sym = symbol.toUpperCase();
   const dates = TRADING_DAY_KEYS();
-  const { system, user } = resolveChartPrompt(
-    {
+  const version = options?.promptVersion ?? '2026-05-16';
+  const maxTokens = version >= '2026-05-21' ? CHART_MAX_TOKENS_V21 : CHART_MAX_TOKENS_DEFAULT;
+
+  const buildMessages = (retryNote?: string) => {
+    const { system, user } = resolveChartPrompt(
+      {
+        symbol: sym,
+        tradingDayKeys: dates,
+        anchorPrice,
+        goldenHint: options?.goldenHint,
+        ragContext: options?.ragContext,
+      },
+      version
+    );
+    const userMsg = retryNote ? `${user}\n\nRETRY: ${retryNote}` : user;
+    return { system, user: userMsg };
+  };
+
+  let usage = { ...EMPTY_USAGE };
+  let lastViolation = '';
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { system, user } = buildMessages(attempt > 0 ? lastViolation : undefined);
+    const { text, usage: callUsage } = await callAiWithUsageFallback(
+      user,
+      system,
+      maxTokens,
+      model,
+      env.agentScrapeBatchTimeoutMs
+    );
+    usage = mergeUsage(usage, callUsage);
+
+    const { bars, sources, dataAttestation } = parseChartPayload(text, sym);
+    const raw = barsToPoints(bars);
+    const aligned = alignSeriesToTradingDays(raw, dates);
+
+    const contract = assertChartScrapeContract(aligned, {
+      version,
       symbol: sym,
-      tradingDayKeys: dates,
-      anchorPrice,
-      ragContext: options?.ragContext,
-    },
-    options?.promptVersion
-  );
+      expectedDates: dates,
+      anchorClose: anchorPrice,
+      liveSeries: options?.liveSeries,
+      sources,
+      dataAttestation,
+    });
 
-  const { text, usage } = await callAiWithUsageFallback(
-    user,
-    system,
-    CHART_MAX_TOKENS,
-    model,
-    env.agentScrapeBatchTimeoutMs
-  );
+    if (contract.ok) {
+      return { series: aligned, usage };
+    }
 
-  const raw = parseChartPayload(text, sym);
-  return { series: alignSeriesToTradingDays(raw, dates), usage };
+    lastViolation = formatChartContractError(contract);
+    console.warn(`[chart-scrape] contract ${sym} attempt ${attempt + 1}: ${lastViolation}`);
+
+    if (version < '2026-05-21') {
+      if (aligned.length >= 10) return { series: aligned, usage };
+      throw new Error(lastViolation);
+    }
+  }
+
+  throw new Error(lastViolation || `Chart contract failed for ${sym}`);
 }
 
 export async function scrapeChartsWithAgent(
@@ -165,6 +224,8 @@ export async function scrapeChartsWithAgent(
   model?: string,
   options?: {
     ragContextBySymbol?: Record<string, string>;
+    goldenHintBySymbol?: Record<string, string>;
+    liveSeriesBySymbol?: Record<string, TimeSeriesData[]>;
     promptVersion?: string;
   }
 ): Promise<{ seriesBySymbol: Record<string, TimeSeriesData[]>; usage: TokenUsage }> {
@@ -179,6 +240,8 @@ export async function scrapeChartsWithAgent(
       model,
       {
         ragContext: options?.ragContextBySymbol?.[sym],
+        goldenHint: options?.goldenHintBySymbol?.[sym],
+        liveSeries: options?.liveSeriesBySymbol?.[sym],
         promptVersion: options?.promptVersion,
       }
     );

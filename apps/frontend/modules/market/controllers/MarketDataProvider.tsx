@@ -35,6 +35,8 @@ import {
   loadAgentChartBundle,
 } from '../utils/agentChartStorage';
 import {
+  clearMarketStockBundle,
+  isAgentStockBundleOversized,
   isMarketStockBundleFresh,
   loadMarketStockBundle,
   saveMarketStockBundle,
@@ -169,6 +171,7 @@ export function MarketDataProvider({
   const [agentJobId, setAgentJobId] = useState<string | null>(null);
   const [agentPanelExpanded, setAgentPanelExpanded] = useState(false);
   const [selectedAgentTier, setSelectedAgentTier] = useState<AiCostTier>('cheaper');
+  const [agentSymbolLimit, setAgentSymbolLimit] = useState(10);
   const [scrapeCompleteGuide, setScrapeCompleteGuide] = useState(false);
 
   const dismissScrapeCompleteGuide = useCallback(() => {
@@ -204,7 +207,7 @@ export function MarketDataProvider({
   const applySettings = useCallback((settings: MarketDataSettings) => {
     setDataModeState(settings.dataMode);
     setQuoteDataModeState(settings.quoteDataMode);
-    if (settings.provider === 'tiingo' || settings.provider === 'yahoo') {
+    if (settings.provider === 'yahoo') {
       setLiveProvider(settings.provider);
     } else if (settings.provider === 'openrouter-agent') {
       setLiveProvider('openrouter-agent');
@@ -213,6 +216,9 @@ export function MarketDataProvider({
     }
     if (settings.liveReachable !== undefined) {
       setLiveReachable(settings.liveReachable);
+    }
+    if (typeof settings.agentScrapeSymbolLimit === 'number' && settings.agentScrapeSymbolLimit > 0) {
+      setAgentSymbolLimit(settings.agentScrapeSymbolLimit);
     }
   }, []);
 
@@ -290,6 +296,8 @@ export function MarketDataProvider({
       forMode?: MarketDataMode;
       quoteDataMode?: QuoteDataMode;
       keepAgentPanel?: boolean;
+      /** After agent job or oversized cache — bypass browser quote cache. */
+      skipLocalCache?: boolean;
     }) => {
       const effectiveMode = options?.forMode ?? dataMode;
       const effectiveQuoteMode = options?.quoteDataMode ?? quoteDataMode;
@@ -309,9 +317,19 @@ export function MarketDataProvider({
           effectiveMode === 'live' || effectiveMode === 'agent';
         let usedLocalCache = false;
 
-        if (quoteModesNeedCache) {
+        if (quoteModesNeedCache && !options?.skipLocalCache) {
           const local = loadMarketStockBundle(storage);
-          if (local && isMarketStockBundleFresh(local)) {
+          const agentOversized =
+            effectiveMode === 'agent' &&
+            local != null &&
+            isAgentStockBundleOversized(local, agentSymbolLimit);
+          if (agentOversized) {
+            clearMarketStockBundle(storage);
+            console.info('[market-stocks] dropped oversized agent localStorage bundle', {
+              stockCount: local.stocks.length,
+              agentSymbolLimit,
+            });
+          } else if (local && isMarketStockBundleFresh(local)) {
             usedLocalCache = true;
             setStocks(local.stocks);
             setLastUpdated(new Date(local.cachedAt));
@@ -423,13 +441,14 @@ export function MarketDataProvider({
         if (!options?.silent) setLoading(false);
       }
     },
-    [dataMode, fetchNewsForMode, loadSettings, quoteDataMode, selectedAgentTier]
+    [agentSymbolLimit, dataMode, fetchNewsForMode, loadSettings, quoteDataMode, selectedAgentTier]
   );
 
   const finishAgentJob = useCallback(
     async (job: AgentScrapeJob) => {
       if (job.usage) setAgentScrapeUsage(job.usage);
       clearAgentChartBundle();
+      clearMarketStockBundle(stockStorageTarget('agent', quoteDataMode));
       try {
         await agentJobApi.loadChartCache();
       } catch (err) {
@@ -439,9 +458,10 @@ export function MarketDataProvider({
         agentTier: job.tier,
         silent: true,
         forMode: 'agent',
+        skipLocalCache: true,
       });
     },
-    [refreshMarketData]
+    [quoteDataMode, refreshMarketData]
   );
 
   const pollAgentJob = useCallback(
@@ -694,7 +714,7 @@ export function MarketDataProvider({
           mode === 'live'
             ? settings.provider === 'yahoo'
               ? 'yahoo'
-              : 'tiingo'
+              : 'yahoo'
             : mode === 'agent'
               ? 'openrouter-agent'
               : null

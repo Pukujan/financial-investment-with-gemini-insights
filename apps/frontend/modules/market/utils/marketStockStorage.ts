@@ -77,6 +77,25 @@ export function loadMarketStockBundle(target: MarketStockStorageTarget): MarketS
   }
 }
 
+export function clearMarketStockBundle(target: MarketStockStorageTarget): void {
+  const key = resolveStorageKey(target);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+    console.info('[market-stocks] localStorage cleared', { key });
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Stale agent-live bundles often held a full live catalog before symbol cap. */
+export function isAgentStockBundleOversized(
+  bundle: MarketStockLocalBundle,
+  agentSymbolLimit: number
+): boolean {
+  return agentSymbolLimit > 0 && bundle.stocks.length > agentSymbolLimit;
+}
+
 export function saveMarketStockBundle(
   target: MarketStockStorageTarget,
   bundle: MarketStockLocalBundle

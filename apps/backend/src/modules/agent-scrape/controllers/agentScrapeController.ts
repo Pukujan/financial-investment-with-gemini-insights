@@ -71,6 +71,7 @@ import {
 import {
   PROMPT_AB_VERSION_A_DEFAULT,
   PROMPT_AB_VERSION_B_DEFAULT,
+  PROMPT_AB_SYMBOL_LIMIT,
   PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
 } from '@investai/shared';
 import {
@@ -316,7 +317,7 @@ function parsePromptEvalBody(req: Request) {
     ragEnabled: req.body?.ragEnabled === true,
     symbolLimit:
       typeof req.body?.symbolLimit === 'number' && req.body.symbolLimit > 0
-        ? Math.min(12, req.body.symbolLimit)
+        ? Math.min(PROMPT_AB_SYMBOL_LIMIT, req.body.symbolLimit)
         : undefined,
     groundTruth,
   };
@@ -411,7 +412,7 @@ function parsePromptAbBody(req: Request) {
     ragEnabled: req.body?.ragEnabled === true,
     symbolLimit:
       typeof req.body?.symbolLimit === 'number' && req.body.symbolLimit > 0
-        ? Math.min(12, req.body.symbolLimit)
+        ? Math.min(PROMPT_AB_SYMBOL_LIMIT, req.body.symbolLimit)
         : undefined,
     groundTruth,
   };
@@ -431,9 +432,12 @@ export const getPromptAbTestEstimate = asyncHandler(async (req: Request, res: Re
   const symbolLimitRaw = req.query.symbolLimit ?? req.body?.symbolLimit;
   const symbolLimit =
     typeof symbolLimitRaw === 'string'
-      ? Math.min(12, parseInt(symbolLimitRaw, 10) || PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT)
+      ? Math.min(
+          PROMPT_AB_SYMBOL_LIMIT,
+          parseInt(symbolLimitRaw, 10) || PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT
+        )
       : typeof symbolLimitRaw === 'number'
-        ? Math.min(12, symbolLimitRaw)
+        ? Math.min(PROMPT_AB_SYMBOL_LIMIT, symbolLimitRaw)
         : undefined;
 
   sendSuccess(

@@ -1,5 +1,6 @@
 import { formatRagContextBlock } from '@investai/prompts';
-import { mockNews, mockStocks } from '../../../data/mockData.js';
+import { catalogContextLine, listCatalogMetadata } from '../../../data/symbolCatalog.js';
+import { getDemoNewsForRag } from '../../../data/demoNewsCatalog.js';
 import { firestoreCollections } from '../../../config/cache.js';
 import { readFirestoreCache, writeFirestoreCache } from '../../../utils/firestoreCache.js';
 import { env } from '../../../config/env.js';
@@ -20,17 +21,17 @@ function buildDefaultChunks(): RagChunk[] {
   const now = new Date().toISOString();
   const chunks: RagChunk[] = [];
 
-  for (const stock of mockStocks) {
+  for (const meta of listCatalogMetadata()) {
     chunks.push({
-      id: `catalog-${stock.symbol}`,
-      symbol: stock.symbol,
-      text: `${stock.name} (${stock.symbol}) — sector ${stock.sector}, market cap ${stock.marketCap}, P/E ${stock.pe}. Use as company context only; prices must come from extraction or golden reference.`,
+      id: `catalog-${meta.symbol}`,
+      symbol: meta.symbol,
+      text: catalogContextLine(meta),
       source: 'catalog',
       asOf: now,
     });
   }
 
-  for (const article of mockNews.slice(0, 12)) {
+  for (const article of getDemoNewsForRag(12)) {
     for (const ticker of article.relatedStocks) {
       chunks.push({
         id: `news-${ticker}-${article.title.slice(0, 12).replace(/\W/g, '')}`,

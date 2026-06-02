@@ -21,7 +21,26 @@ const V2026_05_19: PromptCatalogEntry = {
   supportsGoldenHint: false,
 };
 
-export const CHART_SCRAPE_CATALOG: PromptCatalogEntry[] = [V2026_05_16, V2026_05_19];
+const V2026_05_21: PromptCatalogEntry = {
+  id: 'chart-scrape',
+  version: '2026-05-21',
+  label: 'Chart scrape v3 (web EOD scrape)',
+  summary:
+    'Requires public web sources, per-day session closes, source URLs, and golden-anchor alignment.',
+  changelog:
+    'Instructs model to pull historical EOD from Yahoo/Google/Nasdaq pages; strict JSON + attestation fields.',
+  supportsRag: true,
+  supportsGoldenHint: true,
+};
+
+export const CHART_SCRAPE_CATALOG: PromptCatalogEntry[] = [
+  V2026_05_16,
+  V2026_05_19,
+  V2026_05_21,
+];
+
+const WEB_SOURCES =
+  'Yahoo Finance historical, Google Finance, Nasdaq.com quote/history, or the issuer investor relations daily prices page';
 
 function buildChartV1(ctx: ChartScrapeContext): ResolvedPrompt {
   const anchor =
@@ -51,7 +70,47 @@ When context is provided, keep sector/name consistent; do not contradict the anc
   };
 }
 
+function buildChartV3(ctx: ChartScrapeContext): ResolvedPrompt {
+  const sym = ctx.symbol.toUpperCase();
+  const dateList = ctx.tradingDayKeys.join(', ');
+  const goldenBlock = ctx.goldenHint?.trim()
+    ? `\nGolden reference (last session EOD close from our Live cache — your final bar close must match within 1.5%):\n${ctx.goldenHint}`
+    : '';
+  const anchor =
+    ctx.anchorPrice != null && Number.isFinite(ctx.anchorPrice)
+      ? `\nAnchor close: $${ctx.anchorPrice.toFixed(2)} (use as sanity check for the newest session).`
+      : '';
+  const ragBlock = ctx.ragContext?.trim() ? `\nCompany context (names/sectors only — never copy prices from here):\n${ctx.ragContext}` : '';
+
+  return {
+    id: 'chart-scrape',
+    version: '2026-05-21',
+    system: `You are a financial data extraction agent (chart-scrape 2026-05-21).
+Your job is to obtain REAL end-of-day (EOD) OHLC for US equities from public web pages — not from memory.
+
+Allowed sources (use at least one per symbol): ${WEB_SOURCES}.
+
+Respond ONLY with minified JSON (no markdown):
+{"promptVersion":"2026-05-21","symbol":"SYM","sources":["https://..."],"dataAttestation":"1–2 sentences: which site(s) you used and how you read the daily close column","bars":[["YYYY-MM-DD",open,high,low,close],...]}
+
+Hard rules:
+- Exactly ${AGENT_CHART_TRADING_DAYS} bars, oldest→newest, one bar per listed session date.
+- Each bar date MUST be one of the provided session dates (YYYY-MM-DD).
+- close = official session EOD close from the source (adjusted close OK if that is what the site shows).
+- open/high/low must be plausible for that session (low ≤ min(open,close) ≤ high).
+- Do NOT invent prices, interpolate missing days, or smooth curves.
+- sources must be https URLs you actually relied on (finance.yahoo.com, google.com/finance, nasdaq.com, etc.).
+- If you cannot find a date on the web, omit that bar and set dataAttestation to explain — never guess.
+- When golden reference is provided, the newest bar close must be within 1.5% of that value.`,
+    user: `Symbol: ${sym}
+Session dates (oldest to newest — use EXACTLY these ${AGENT_CHART_TRADING_DAYS} keys): ${dateList}
+Task: Scrape/download historical daily OHLC for ${sym} from ${WEB_SOURCES} for each date above.
+Echo promptVersion "2026-05-21".${anchor}${goldenBlock}${ragBlock}`,
+  };
+}
+
 export function resolveChartScrape(version: string, ctx: ChartScrapeContext): ResolvedPrompt {
+  if (version === '2026-05-21') return buildChartV3(ctx);
   if (version === '2026-05-19') return buildChartV2(ctx);
   return buildChartV1(ctx);
 }

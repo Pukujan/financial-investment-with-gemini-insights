@@ -1,3 +1,4 @@
+/** Pipeline contract: @see ../../workflows/prompt-ab.pipeline.ts (PROMPT_AB_PIPELINE) */
 import { randomUUID } from 'crypto';
 import type {
   AiCostTier,
@@ -34,8 +35,8 @@ function initialSteps(ragEnabled: boolean): PromptAbTestJobStep[] {
     { id: 'estimate', label: 'Token & cost estimate', status: 'pending' },
     { id: 'ground-truth', label: 'Load Live cached EOD ground truth', status: 'pending' },
     ...(ragEnabled ? [{ id: 'rag', label: 'RAG retrieval', status: 'pending' as const }] : []),
-    { id: 'arm-a', label: 'Run prompt A', status: 'pending' },
-    { id: 'arm-b', label: 'Run prompt B', status: 'pending' },
+    { id: 'arm-a', label: 'Chart scrape arm A (30d EOD)', status: 'pending' },
+    { id: 'arm-b', label: 'Chart scrape arm B (30d EOD)', status: 'pending' },
     { id: 'insight', label: 'AI engineering insight', status: 'pending' },
   ];
 }

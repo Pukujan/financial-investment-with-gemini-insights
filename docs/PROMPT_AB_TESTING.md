@@ -129,13 +129,13 @@ Displayed in the run detail panel — use it to iterate `packages/prompts/src/te
 | Area | Component |
 |------|-----------|
 | Nav | **Prompt A/B** (`App.tsx`) |
-| Run controls | `PromptAbDashboard.tsx` |
-| History table | `EvalRunLogTable` |
-| Timeline | `EvalRunTimeline` |
-| Detail | `PromptAbRunDetail.tsx` |
-| Cost table | `PromptAbCostPanel.tsx` |
-| Insight | `PromptAbInsightPanel.tsx` |
-| Charts | `PromptAbCharts.tsx` |
+| Run controls | `modules/prompt-ab/views/PromptAbDashboard.tsx` |
+| History table | `modules/market/views/eval/EvalRunLogTable` (shared) |
+| Timeline | `modules/market/views/eval/EvalRunTimeline` (shared) |
+| Detail | `modules/prompt-ab/views/PromptAbRunDetail.tsx` |
+| Cost table | `modules/prompt-ab/views/PromptAbCostPanel.tsx` |
+| Insight | `modules/prompt-ab/views/PromptAbInsightPanel.tsx` |
+| Charts | `modules/prompt-ab/views/PromptAbCharts.tsx` |
 
 ---
 

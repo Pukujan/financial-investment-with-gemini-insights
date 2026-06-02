@@ -2,7 +2,7 @@ import type { AgentScrapeEstimate, AgentScrapeUsage, AiCostTier } from '@investa
 import type { NewsArticle, StockQuote, TimeSeriesData } from '@investai/shared';
 import { env } from '../../../config/env.js';
 import { memoryCacheTtl } from '../../../config/cache.js';
-import { mockStocks } from '../../../data/mockData.js';
+import { getTrackedSymbols } from '../../../data/symbolCatalog.js';
 import {
   getMemoryCached,
   setMemoryCached,
@@ -33,8 +33,7 @@ import { getTierModelId, parseAiCostTier } from '../../ai-estimate/services/mode
 export const AGENT_PROVIDER = 'openrouter-agent' as const;
 
 export function getAgentSymbols(): string[] {
-  const all = mockStocks.map(s => s.symbol);
-  return all.slice(0, env.agentScrapeSymbolLimit);
+  return getTrackedSymbols(env.agentScrapeSymbolLimit);
 }
 
 export function isAgentScrapeConfigured(): boolean {

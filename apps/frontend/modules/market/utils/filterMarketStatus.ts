@@ -8,9 +8,9 @@ const LIVE_ERROR_CODES = new Set([
 ]);
 
 const LIVE_WARNING_PATTERN =
-  /tiingo|live market|live news|live chart|hourly rate limit|stock_fetch_limit/i;
+  /yahoo|live market|live news|live chart|rate limit|stock_fetch_limit/i;
 
-/** In agent mode, only show agent-scrape (and generic) status — not Tiingo/live failures. */
+/** In agent mode, only show agent-scrape (and generic) status — not live quote failures. */
 export function filterStatusForDataMode(
   dataMode: MarketDataMode,
   error: string | null,

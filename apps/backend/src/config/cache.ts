@@ -5,7 +5,7 @@ import { env } from './env.js';
 const marketTtlMs = env.marketCacheTtlHours * 60 * 60 * 1000;
 
 export const memoryCacheTtl = {
-  /** Live Tiingo quotes, news, charts — default 24h (once per day) */
+  /** Live Yahoo quotes, news, charts — default 24h (once per day) */
   marketQuoteMs: marketTtlMs,
   marketNewsMs: marketTtlMs,
   marketTimeSeriesMs: marketTtlMs,

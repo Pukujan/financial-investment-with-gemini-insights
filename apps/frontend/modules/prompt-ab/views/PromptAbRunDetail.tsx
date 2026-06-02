@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { PromptAbTestExperiment } from '@investai/shared';
 import { AI_COST_TIER_LABELS } from '@investai/shared';
+import { EvalSymbolPicker } from '@/modules/market/views/eval/EvalSymbolPicker';
 import { PromptAbCharts } from './PromptAbCharts';
 import { PromptAbCostPanel } from './PromptAbCostPanel';
 import { PromptAbInsightPanel } from './PromptAbInsightPanel';
-import { EvalSymbolPicker } from './EvalSymbolPicker';
 
 interface PromptAbRunDetailProps {
   record: PromptAbTestExperiment;

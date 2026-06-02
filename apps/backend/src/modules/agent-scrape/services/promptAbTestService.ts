@@ -10,7 +10,6 @@ import type {
   PromptEvalGoldenSymbol,
   PromptEvalGroundTruthPayload,
   PromptEvalTierSymbol,
-  StockQuote,
   TimeSeriesData,
 } from '@investai/shared';
 import {
@@ -18,12 +17,12 @@ import {
   buildPromptAbCostEval,
   buildPromptAbEfficiencyCompare,
   CHART_EOD_CONVENTION,
+  PROMPT_AB_SYMBOL_LIMIT,
   PROMPT_AB_VERSION_A_DEFAULT,
   PROMPT_AB_VERSION_B_DEFAULT,
   PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
   PROMPT_EVAL_WINDOW_DAYS,
   buildDailyVsLive,
-  buildEodSeriesFromQuote,
   pctDiff,
 } from '@investai/shared';
 import { resolvePromptVersion } from '@investai/prompts';
@@ -37,7 +36,7 @@ import {
 import { loadEvalHistoryFromDisk } from '../../../utils/evalDiskStore.js';
 import type { TokenUsage } from '../../../utils/aiClient.js';
 import { invalidateAgentScrapeCache } from './agentScrapeCache.js';
-import { scrapeQuotesWithAgent } from './agents/quoteScrapeAgent.js';
+import { scrapeChartsWithAgent } from './agents/chartScrapeAgent.js';
 import { resolvePromptEvalGroundTruth } from './promptEvalGroundTruth.js';
 import { retrieveRagForSymbols } from './ragService.js';
 import { getAgentSymbols, isAgentScrapeConfigured } from './agentScrapeService.js';
@@ -82,14 +81,14 @@ function pickWinner(armA: PromptAbTestArmResult, armB: PromptAbTestArmResult): P
 function buildSymbolMetrics(
   golden: PromptEvalGoldenSymbol[],
   yahooSeriesBySymbol: Record<string, TimeSeriesData[]>,
-  quotes: StockQuote[]
+  seriesBySymbol: Record<string, TimeSeriesData[]>
 ): PromptEvalTierSymbol[] {
   const tierSymbols: PromptEvalTierSymbol[] = [];
   for (const g of golden) {
-    const agentQuote = quotes.find(q => q.symbol.toUpperCase() === g.symbol);
-    if (!agentQuote) continue;
+    const agentSeries = seriesBySymbol[g.symbol] ?? [];
+    if (!agentSeries.length) continue;
 
-    const agentSeries = buildEodSeriesFromQuote(agentQuote.price, EVAL_WINDOW_DAYS);
+    const lastClose = agentSeries[agentSeries.length - 1]!.close;
     const yahooSeries = yahooSeriesBySymbol[g.symbol] ?? [];
     const dailyVsLive = yahooSeries.length ? buildDailyVsLive(agentSeries, yahooSeries) : [];
 
@@ -100,9 +99,9 @@ function buildSymbolMetrics(
 
     tierSymbols.push({
       symbol: g.symbol,
-      agentPrice: agentQuote.price,
+      agentPrice: lastClose,
       yahooClose: g.yahooClose,
-      quoteDeviationPct: pctDiff(agentQuote.price, g.yahooClose),
+      quoteDeviationPct: pctDiff(lastClose, g.yahooClose),
       dailyVsLive,
       avgAbsDailyDeviationPct: avgAbs(dailyDevs),
     });
@@ -168,16 +167,18 @@ async function persistExperiment(experiment: PromptAbTestExperiment): Promise<vo
   });
 }
 
+function resolveAbSymbolLimit(symbolLimit?: number): number {
+  const cap = symbolLimit ?? PROMPT_AB_SYMBOL_LIMIT;
+  return Math.min(PROMPT_AB_SYMBOL_LIMIT, cap);
+}
+
 export async function estimatePromptAbForOptions(options: {
   tier?: AiCostTier;
   ragEnabled?: boolean;
   symbolLimit?: number;
 }): Promise<PromptAbCostEstimateSnapshot> {
-  const symbols = getAgentSymbols().slice(
-    0,
-    options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT
-  );
-  return estimatePromptAbTest(symbols.length, options.tier ?? 'cheaper', Boolean(options.ragEnabled));
+  const count = resolveAbSymbolLimit(options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT);
+  return estimatePromptAbTest(count, options.tier ?? 'cheaper', Boolean(options.ragEnabled));
 }
 
 export async function runPromptAbTestWithProgress(
@@ -199,15 +200,13 @@ export async function runPromptAbTestWithProgress(
 
   const versionA = options.versionA?.trim() || PROMPT_AB_VERSION_A_DEFAULT;
   const versionB = options.versionB?.trim() || PROMPT_AB_VERSION_B_DEFAULT;
-  const resolvedA = resolvePromptVersion('quote-scrape', versionA);
-  const resolvedB = resolvePromptVersion('quote-scrape', versionB);
+  const resolvedA = resolvePromptVersion('chart-scrape', versionA);
+  const resolvedB = resolvePromptVersion('chart-scrape', versionB);
   const tier = options.tier ?? 'cheaper';
   const modelId = getTierModelId(tier);
   const experimentId = options.experimentId ?? randomUUID();
-  const symbols = getAgentSymbols().slice(
-    0,
-    options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT
-  );
+  const symbolCap = resolveAbSymbolLimit(options.symbolLimit);
+  const symbols = getAgentSymbols().slice(0, symbolCap);
 
   hooks.onStepStart('estimate', 'Pre-run token & cost estimate');
   const estimateSnapshot =
@@ -227,16 +226,26 @@ export async function runPromptAbTestWithProgress(
   } = await resolvePromptEvalGroundTruth(symbols, options.groundTruth);
   hooks.onStepDone('ground-truth', `${symbols.length} symbols · ${groundTruthSource}`);
 
-  const goldenHint = golden
-    .map(g => `${g.symbol}: ground-truth EOD close $${g.yahooClose.toFixed(2)}`)
-    .join('\n');
+  const anchorPrices: Record<string, number> = {};
+  const goldenHintBySymbol: Record<string, string> = {};
+  for (const g of golden) {
+    anchorPrices[g.symbol] = g.yahooClose;
+    goldenHintBySymbol[g.symbol] = `${g.symbol}: EOD close $${g.yahooClose.toFixed(2)}`;
+  }
 
-  let ragContext = '';
+  let ragContextBySymbol: Record<string, string> = {};
   if (options.ragEnabled) {
     hooks.onStepStart('rag', 'RAG retrieval');
     try {
-      const { contextBlock } = await retrieveRagForSymbols(symbols, 2);
-      ragContext = contextBlock;
+      const { chunks, contextBlock } = await retrieveRagForSymbols(symbols, 2);
+      for (const sym of symbols) {
+        const upper = sym.toUpperCase();
+        const symChunks = chunks.filter(c => c.symbol.toUpperCase() === upper);
+        ragContextBySymbol[upper] =
+          symChunks.length > 0
+            ? symChunks.map(c => c.text).join('\n')
+            : contextBlock;
+      }
       hooks.onStepDone('rag', 'chunks loaded');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'RAG failed';
@@ -251,15 +260,16 @@ export async function runPromptAbTestWithProgress(
     resolvedVersion: string,
     stepId: string
   ): Promise<PromptAbTestArmResult> {
-    hooks.onStepStart(stepId, `Prompt ${promptVersion} (${arm})`);
+    hooks.onStepStart(stepId, `Chart ${promptVersion} (${arm}) · ${symbols.length} symbols`);
     invalidateAgentScrapeCache();
     try {
-      const { quotes, usage, reasoning } = await scrapeQuotesWithAgent(symbols, modelId, {
-        ragContext,
-        goldenHint,
+      const { seriesBySymbol, usage } = await scrapeChartsWithAgent(symbols, anchorPrices, modelId, {
+        ragContextBySymbol: options.ragEnabled ? ragContextBySymbol : undefined,
+        goldenHintBySymbol,
+        liveSeriesBySymbol: yahooSeriesBySymbol,
         promptVersion,
       });
-      const tierSymbols = buildSymbolMetrics(golden, yahooSeriesBySymbol, quotes);
+      const tierSymbols = buildSymbolMetrics(golden, yahooSeriesBySymbol, seriesBySymbol);
       const result = await summarizeArm(
         arm,
         promptVersion,
@@ -267,12 +277,11 @@ export async function runPromptAbTestWithProgress(
         modelId,
         tier,
         tierSymbols,
-        usage,
-        reasoning
+        usage
       );
       hooks.onStepDone(
         stepId,
-        `${result.avgAbsQuoteDeviationPct.toFixed(2)}% dev · ${result.tokensUsed} tok · $${result.costUsd.toFixed(4)}`
+        `${result.avgAbsQuoteDeviationPct.toFixed(2)}% last-close · ${result.avgAbsDailyDeviationPct?.toFixed(2) ?? '—'}% daily · ${result.tokensUsed} tok`
       );
       return result;
     } catch (err) {

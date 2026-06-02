@@ -43,12 +43,31 @@ async function parseResponse<T>(res: Response): Promise<ApiResponse<T>> {
   try {
     body = JSON.parse(trimmed) as ApiResponse<T> & { error?: string; code?: string };
   } catch {
-    const preview = trimmed.slice(0, 80).replace(/\s+/g, ' ');
-    throw new ApiError(
-      `Invalid API response (not JSON). ${preview.startsWith('<!') ? 'Got HTML — use the Vite dev server URL and keep VITE_API_URL empty.' : `Body: ${preview}`}`,
-      res.status,
-      'API_INVALID_JSON'
-    );
+    const preview = trimmed.slice(0, 120).replace(/\s+/g, ' ');
+    const isHtml = preview.startsWith('<!');
+    const expressMissingRoute = /Cannot (GET|POST|PUT|DELETE|PATCH)/i.test(trimmed);
+    const vercelSpa =
+      isHtml &&
+      !expressMissingRoute &&
+      /InvestAI|vite\.svg|id="root"/i.test(trimmed);
+
+    let message: string;
+    if (expressMissingRoute) {
+      message =
+        'Backend returned 404 HTML for this route (stale deploy or wrong API host). ' +
+        'Redeploy the backend from latest main, then confirm GET /api/health exposes prompt A/B routes.';
+    } else if (vercelSpa) {
+      message =
+        'Got the frontend SPA instead of JSON. On Vercel set VITE_API_URL to your Railway API URL and redeploy. ' +
+        'In local dev open http://localhost:5173 (npm run dev) and keep VITE_API_URL empty.';
+    } else if (isHtml) {
+      message =
+        'Invalid API response (HTML). Use http://localhost:5173 in dev (VITE_API_URL empty), or set VITE_API_URL to your backend URL in production.';
+    } else {
+      message = `Invalid API response (not JSON). Body: ${preview}`;
+    }
+
+    throw new ApiError(message, res.status, 'API_INVALID_JSON');
   }
 
   if (!res.ok) {

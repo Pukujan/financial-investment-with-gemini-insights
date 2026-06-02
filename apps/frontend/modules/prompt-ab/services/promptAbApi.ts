@@ -1,7 +1,13 @@
-import type { PromptAbTestExperiment, PromptAbTestHistory, PromptAbTestSummary } from '@investai/shared';
-import type { AiCostTier, PromptEvalCooldownStatus } from '@investai/shared';
-import type { PromptEvalGroundTruthPayload } from '@investai/shared';
-import { http } from '../../../shared/api/http';
+import type {
+  PromptAbCostEstimateSnapshot,
+  PromptAbTestExperiment,
+  PromptAbTestHistory,
+  PromptAbTestSummary,
+  AiCostTier,
+  PromptEvalCooldownStatus,
+  PromptEvalGroundTruthPayload,
+} from '@investai/shared';
+import { http } from '@/shared/api/http';
 
 export const promptAbApi = {
   getHistory: () =>
@@ -28,7 +34,7 @@ export const promptAbApi = {
     if (params.tier) q.set('tier', params.tier);
     if (params.ragEnabled) q.set('ragEnabled', 'true');
     if (params.symbolLimit) q.set('symbolLimit', String(params.symbolLimit));
-    return http<import('@investai/shared').PromptAbCostEstimateSnapshot>(
+    return http<PromptAbCostEstimateSnapshot>(
       `/api/agent-scrape/eval/prompt-ab/estimate?${q}`
     );
   },

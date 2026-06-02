@@ -7,9 +7,22 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { PromptAbTestJob, PromptAbTestSummary } from '@investai/shared';
-import { PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT } from '@investai/shared';
-import { buildGroundTruthFromLocalBundle } from '../utils/marketStockStorage';
+import type { AiCostTier, PromptAbTestJob, PromptAbTestSummary } from '@investai/shared';
+import { PROMPT_AB_SYMBOL_LIMIT, PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT } from '@investai/shared';
+
+const PROMPT_AB_SYMBOLS = [
+  'AAPL',
+  'MSFT',
+  'GOOGL',
+  'AMZN',
+  'NVDA',
+  'META',
+  'TSLA',
+  'JPM',
+  'V',
+  'JNJ',
+] as const;
+import { buildGroundTruthFromLocalBundle } from '@/modules/market/utils/marketStockStorage';
 import { promptAbJobApi } from '../services/promptAbJobApi';
 
 const POLL_MS = 1200;
@@ -22,7 +35,7 @@ interface PromptAbRunContextValue {
   startPromptAbTest: (options: {
     versionA: string;
     versionB: string;
-    tier?: import('@investai/shared').AiCostTier;
+    tier?: AiCostTier;
     ragEnabled?: boolean;
     symbolLimit?: number;
   }) => Promise<PromptAbTestJob>;
@@ -70,15 +83,18 @@ export function PromptAbRunProvider({ children }: { children: ReactNode }) {
     async (options: {
       versionA: string;
       versionB: string;
-      tier?: import('@investai/shared').AiCostTier;
+      tier?: AiCostTier;
       ragEnabled?: boolean;
       symbolLimit?: number;
     }) => {
       setPromptAbRunning(true);
       setLastSummary(null);
       try {
-        const symbolLimit = options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT;
-        const symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA'].slice(0, symbolLimit);
+        const symbolLimit = Math.min(
+          options.symbolLimit ?? PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT,
+          PROMPT_AB_SYMBOL_LIMIT
+        );
+        const symbols = PROMPT_AB_SYMBOLS.slice(0, symbolLimit);
         const groundTruth = buildGroundTruthFromLocalBundle(symbols) ?? undefined;
         if (groundTruth) {
           console.info('[prompt-ab] using Live localStorage ground truth', {

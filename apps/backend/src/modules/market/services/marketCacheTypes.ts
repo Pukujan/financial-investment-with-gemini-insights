@@ -25,6 +25,8 @@ export interface MarketFetchMeta {
   cacheNote?: string;
   /** 30d OHLC per symbol — persisted to browser localStorage on the client. */
   seriesBySymbol?: Record<string, TimeSeriesData[]>;
+  /** Agent mode: max symbols in dashboard list (matches AGENT_SCRAPE_SYMBOL_LIMIT). */
+  agentSymbolLimit?: number;
 }
 
 export interface MarketNewsMeta {

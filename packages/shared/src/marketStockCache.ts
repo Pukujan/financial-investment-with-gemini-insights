@@ -20,7 +20,7 @@ export interface MarketStockLocalBundle {
 /** Reference EOD data sent from the client cache for prompt eval. */
 export interface PromptEvalGroundTruthPayload {
   cachedAt: string;
-  source: 'localStorage' | 'firestore' | 'provider-yahoo' | 'provider-tiingo';
+  source: 'localStorage' | 'firestore' | 'provider-yahoo';
   symbols: Array<{
     symbol: string;
     yahooClose: number;
@@ -29,4 +29,5 @@ export interface PromptEvalGroundTruthPayload {
   seriesBySymbol: Record<string, TimeSeriesData[]>;
 }
 
-export const PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT = 3;
+/** Prompt eval + A/B default symbol count (matches AGENT_SCRAPE_SYMBOL_LIMIT). */
+export const PROMPT_EVAL_DEFAULT_SYMBOL_LIMIT = 10;

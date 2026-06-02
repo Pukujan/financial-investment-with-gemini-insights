@@ -17,13 +17,8 @@ export const env = {
     process.env.DEMO_AUTH_SECRET ??
     process.env.DEMO_AUTH_PASSWORD ??
     'change-me-demo-auth-secret',
-  /**
-   * Live quotes: `yahoo` (default, yahoo-finance2 / yfinance-style) | `tiingo` (API key).
-   */
-  marketLiveProvider: (() => {
-    const p = (process.env.MARKET_LIVE_PROVIDER ?? 'yahoo').toLowerCase();
-    return p === 'tiingo' ? ('tiingo' as const) : ('yahoo' as const);
-  })(),
+  /** Live quotes always use Yahoo Finance (yahoo-finance2). */
+  marketLiveProvider: 'yahoo' as const,
   appVersion: process.env.npm_package_version ?? '1.0.0',
   openRouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
   /** Primary — DeepSeek V3 (~$0.20/$0.77 per 1M tokens on OpenRouter) */
@@ -46,17 +41,17 @@ export const env = {
     1,
     parseFloat(process.env.MARKET_CACHE_TTL_HOURS ?? '12') || 12
   ),
-  /** EOD quotes, charts, and news — https://www.tiingo.com */
-  tiingoApiToken: process.env.TIINGO_API_TOKEN ?? '',
-  tiingoBatchSize: Math.max(1, parseInt(process.env.TIINGO_BATCH_SIZE ?? '5', 10)),
-  tiingoBatchDelayMs: Math.max(0, parseInt(process.env.TIINGO_BATCH_DELAY_MS ?? '500', 10)),
-  /** Articles per daily news fetch (single API call, then cached). */
-  tiingoNewsLimit: Math.max(10, parseInt(process.env.TIINGO_NEWS_LIMIT ?? '50', 10)),
+  /** Yahoo bulk fetch — symbols per batch when refreshing live stocks. */
+  marketLiveBatchSize: Math.max(1, parseInt(process.env.MARKET_LIVE_BATCH_SIZE ?? '5', 10)),
+  marketLiveBatchDelayMs: Math.max(
+    0,
+    parseInt(process.env.MARKET_LIVE_BATCH_DELAY_MS ?? '500', 10)
+  ),
   /**
    * If false (default), charts are served only from the daily bulk preload (0 extra API calls per click).
-   * Set true only for debugging — each chart click costs another Tiingo request.
+   * Set true only for debugging — each chart click costs another Yahoo request.
    */
-  tiingoChartOnDemand: process.env.TIINGO_CHART_ON_DEMAND === 'true',
+  liveChartOnDemand: process.env.LIVE_CHART_ON_DEMAND === 'true',
   /** Agent mode — max symbols to scrape (default 10; was 20 — one LLM chart call per symbol) */
   agentScrapeSymbolLimit: Math.max(
     1,
@@ -124,9 +119,6 @@ export const env = {
   isOpenRouterConfigured(): boolean {
     return Boolean(this.openRouterApiKey);
   },
-  isTiingoConfigured(): boolean {
-    return Boolean(this.tiingoApiToken);
-  },
 };
 
 export function getPortfolioDocId(): string {
@@ -155,21 +147,9 @@ export function validateEnv(): EnvValidationResult {
     );
   }
 
-  if (env.marketDataMode === 'live' && env.marketLiveProvider === 'tiingo' && !env.isTiingoConfigured()) {
+  if (env.marketDataMode === 'live') {
     warnings.push(
-      'MARKET_DATA_MODE=live with MARKET_LIVE_PROVIDER=tiingo but TIINGO_API_TOKEN is not set'
-    );
-  }
-
-  if (env.marketDataMode === 'live' && env.marketLiveProvider === 'yahoo') {
-    warnings.push(
-      'Live mode uses Yahoo Finance via yahoo-finance2 (same source as yfinance; no API key). News uses demo catalog.'
-    );
-  }
-
-  if (env.marketDataMode === 'live' && env.isTiingoConfigured()) {
-    warnings.push(
-      'Tiingo News API may require a paid plan; free tokens usually include EOD prices only (news falls back to catalog)'
+      'Live mode uses Yahoo Finance via yahoo-finance2 (no API key). News uses demo catalog until a live news provider is added.'
     );
   }
 

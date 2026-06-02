@@ -23,8 +23,8 @@ import {
   DataSourcesView,
   EstimateEvalDashboard,
   PromptEvalDashboard,
-  PromptAbDashboard,
 } from '@/modules/market';
+import { PromptAbDashboard, PromptAbRunProvider } from '@/modules/prompt-ab';
 import { AIInsightsProvider } from '@/modules/ai-insights';
 import { PortfolioProvider } from '@/modules/portfolio';
 import { Dashboard } from '@/modules/dashboard';
@@ -34,7 +34,6 @@ import { AIInsights } from '@/modules/ai-insights';
 import { Portfolio } from '@/modules/portfolio';
 import { AuthProvider, useAuth } from '@/modules/auth';
 import { PromptEvalRunProvider } from '@/modules/market/controllers/PromptEvalRunProvider';
-import { PromptAbRunProvider } from '@/modules/market/controllers/PromptAbRunProvider';
 import { Button } from '@/components/ui/button';
 
 type View = AppViewId;
@@ -52,7 +51,7 @@ function AppContent({
     dataMode === 'live'
       ? liveProvider === 'yahoo'
         ? 'Live (Yahoo)'
-        : 'Live (Tiingo)'
+        : 'Live (Yahoo)'
       : dataMode === 'agent'
         ? 'Agent · LLM charts'
         : 'Mock catalog';

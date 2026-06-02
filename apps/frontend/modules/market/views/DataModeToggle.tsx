@@ -27,7 +27,7 @@ export function DataModeToggle() {
               id === 'agent'
                 ? 'Agent — 30-day LLM chart scrape only (no Live/Mock quote fetch)'
                 : id === 'live'
-                  ? 'Live — Yahoo/Tiingo quotes and charts'
+                  ? 'Live — Yahoo Finance quotes and charts'
                   : 'Mock — static catalog'
             }
             disabled={switchingMode}

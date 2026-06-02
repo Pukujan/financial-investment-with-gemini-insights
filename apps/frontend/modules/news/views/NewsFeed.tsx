@@ -92,7 +92,7 @@ export function NewsFeed() {
 
       {!loading && dataMode === 'live' && news.length === 0 && !displayNewsError && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          No news articles loaded. Tiingo News may require a paid plan — check warnings above or
+          No news articles loaded — check warnings above or
           switch to Mock mode.
         </div>
       )}

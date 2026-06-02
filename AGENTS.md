@@ -3,6 +3,7 @@
 Read this first. Humans should start at [README.md](./README.md).
 
 **Canonical behavior reference:** [docs/HOW_IT_WORKS_NOW.md](./docs/HOW_IT_WORKS_NOW.md)  
+**Module boundaries:** [docs/MODULE_CONTRACTS.md](./docs/MODULE_CONTRACTS.md)  
 **Today's changes:** [docs/DEV_LOG_2026-05-20.md](./docs/DEV_LOG_2026-05-20.md)  
 **Prompt A/B study:** [docs/PROMPT_AB_TESTING.md](./docs/PROMPT_AB_TESTING.md)  
 **Prompt engineering:** [docs/PROMPT_ENGINEERING.md](./docs/PROMPT_ENGINEERING.md)  
@@ -10,7 +11,7 @@ Read this first. Humans should start at [README.md](./README.md).
 
 ## What this app does
 
-Financial dashboard: stock quotes and charts (**Tiingo** in live mode), mock or live news, AI insights & predictions (**OpenRouter**), portfolio in Firestore. **SPA frontend** talks to **Express backend**; secrets stay server-side.
+Financial dashboard: stock quotes and charts (**Yahoo Finance** in live mode), demo-catalog news, AI insights & predictions (**OpenRouter**), portfolio in Firestore. **SPA frontend** talks to **Express backend**; secrets stay server-side.
 
 ## Repo map (30 seconds)
 
@@ -34,7 +35,7 @@ Financial dashboard: stock quotes and charts (**Tiingo** in live mode), mock or 
 
 ```bash
 npm install
-cp .env.example .env   # TIINGO_API_TOKEN + OPENROUTER_API_KEY
+cp .env.example .env   # OPENROUTER_API_KEY (+ optional Firebase)
 npm run dev            # frontend :5173 + backend :3001
 npm test               # backend vitest + QA (mocked)
 npm run build
@@ -46,13 +47,13 @@ Verify: `curl http://localhost:3001/api/health` → `data.env.missing` should be
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `TIINGO_API_TOKEN` | **Live mode** | Tiingo EOD + news |
 | `OPENROUTER_API_KEY` | **AI in live** | OpenRouter (`sk-or-...`) |
 | `OPENROUTER_MODEL_PRIMARY` | No | Default: `deepseek/deepseek-chat-v3-0324` |
 | `OPENROUTER_MODEL_FALLBACK` | No | Default: `qwen/qwen3.5-flash-02-23` |
 | `MARKET_DATA_MODE` | No | Default `live` or `mock` |
-| `MARKET_CACHE_TTL_HOURS` | No | Default 24 (once/day Tiingo usage) |
-| `TIINGO_CHART_ON_DEMAND` | No | Default `false` — charts from bulk preload |
+| `MARKET_CACHE_TTL_HOURS` | No | Default 12 — reuse Yahoo bulk cache |
+| `LIVE_CHART_ON_DEMAND` | No | Default `false` — charts from bulk preload |
+| `MARKET_LIVE_BATCH_SIZE` / `MARKET_LIVE_BATCH_DELAY_MS` | No | Yahoo bulk fetch pacing |
 | `FIREBASE_*` | No | Portfolio + AI cache |
 | `VITE_API_URL` | No | Empty in dev = Vite proxy |
 
@@ -82,7 +83,7 @@ Verify: `curl http://localhost:3001/api/health` → `data.env.missing` should be
 | Mode | Source |
 |------|--------|
 | **mock** | `mockData.ts` catalog |
-| **live** | Tiingo only — **no mock fallback** on failure (503 + error codes) |
+| **live** | Yahoo Finance only — **no mock fallback** on failure (503 + error codes) |
 | **agent** | 30-day LLM chart jobs; quotes/news from `quoteDataMode` (live/mock) — see [PROJECT_SCOPE.md](./docs/PROJECT_SCOPE.md) |
 
 Toggle in header or `PUT /api/market/settings` with `{ "dataMode", "quoteDataMode" }`.
@@ -97,6 +98,7 @@ AI: `AI_NOT_CONFIGURED`, `AI_INVALID_RESPONSE`, `AI_GENERATION_FAILED`, `AI_INSU
 | Module | Controller | Service |
 |--------|------------|---------|
 | `market` | `MarketDataProvider` | `marketApi` |
+| `prompt-ab` | `PromptAbRunProvider` | `promptAbApi`, `promptAbJobApi` |
 | `dashboard` | `useDashboardChart` | `dashboardApi` |
 | `ai-insights` | `AIInsightsProvider` | `aiApi` |
 | `portfolio` | `PortfolioProvider` | `portfolioApi` |
@@ -108,7 +110,7 @@ Entry: `apps/frontend/App.tsx`.
 
 | Module | Key files |
 |--------|-----------|
-| `market` | `marketService.ts`, `tiingoProvider.ts` |
+| `market` | `marketService.ts`, `yahooProvider.ts` |
 | `ai` | `aiService.ts`, `insightsCacheService.ts`, `insightsValidation.ts` |
 | `portfolio` | `portfolioService.ts` |
 

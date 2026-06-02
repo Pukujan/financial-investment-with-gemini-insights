@@ -26,6 +26,8 @@ export interface ChartScrapeContext {
   symbol: string;
   tradingDayKeys: string[];
   anchorPrice?: number;
+  /** Yahoo / Live-cache last EOD close — authoritative for v3 alignment. */
+  goldenHint?: string;
   ragContext?: string;
 }
 

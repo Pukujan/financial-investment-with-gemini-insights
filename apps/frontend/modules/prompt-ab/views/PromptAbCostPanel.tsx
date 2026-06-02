@@ -1,6 +1,6 @@
 import type { PromptAbTestExperiment } from '@investai/shared';
 import { AI_COST_TIER_LABELS } from '@investai/shared';
-import { formatUsd } from '../../../ai-estimate/utils/formatUsd';
+import { formatUsd } from '@/modules/ai-estimate/utils/formatUsd';
 
 function formatTokens(n: number): string {
   return n.toLocaleString();

@@ -5,7 +5,6 @@ export type MarketStocksCacheSource =
   | 'firestore-stale'
   | 'memory-stale'
   | 'provider-yahoo'
-  | 'provider-tiingo'
   | 'mock-catalog'
   | 'agent-memory'
   | 'agent-firestore'
@@ -24,7 +23,6 @@ const STOCK_SOURCE_NOTES: Record<MarketStocksCacheSource, string> = {
   'firestore-stale': 'Firestore bulk past TTL but within 7-day stale window.',
   'memory-stale': 'Server RAM past TTL but within stale window.',
   'provider-yahoo': 'Live fetch from Yahoo Finance; writing Firestore if configured.',
-  'provider-tiingo': 'Live fetch from Tiingo; writing Firestore if configured.',
   'mock-catalog': 'Static mock catalog (no network).',
   'agent-memory': 'Agent scrape bulk in server RAM.',
   'agent-firestore': 'Agent scrape bulk in Firestore.',

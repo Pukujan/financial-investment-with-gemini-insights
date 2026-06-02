@@ -1,5 +1,7 @@
 import type { MarketDataMode, MarketDataSettings, NewsArticle, StockQuote, TimeSeriesData } from '@investai/shared';
-import { mockNews, mockStocks } from '../../../data/mockData.js';
+import { findCatalogMetadata, getTrackedSymbols } from '../../../data/symbolCatalog.js';
+import { getDemoNewsArticles } from '../../../data/demoNewsCatalog.js';
+import { assertLiveQuoteProvider } from '../../../contracts/marketPath.js';
 import { memoryCacheTtl } from '../../../config/cache.js';
 import { env } from '../../../config/env.js';
 import {
@@ -33,17 +35,6 @@ import {
   getMockTimeSeries,
   MOCK_PROVIDER,
 } from './mockQuoteProvider.js';
-import {
-  fetchTiingoBulk,
-  fetchTiingoDailyBars,
-  fetchTiingoMarketNews,
-  fetchTiingoTimeSeries,
-  isTiingoNewsForbidden,
-  probeTiingoProvider,
-  quoteFromTiingoBars,
-  TIINGO_PROVIDER,
-  timeSeriesFromTiingoBars,
-} from './tiingoProvider.js';
 import {
   fetchYahooBulk,
   fetchYahooChartQuotes,
@@ -98,9 +89,10 @@ import {
 
 export type { MarketFetchMeta, MarketNewsMeta } from './marketCacheTypes.js';
 
-const ALL_SYMBOLS = mockStocks.map(s => s.symbol);
 const STOCK_SYMBOLS =
-  env.stockFetchLimit > 0 ? ALL_SYMBOLS.slice(0, env.stockFetchLimit) : ALL_SYMBOLS;
+  env.stockFetchLimit > 0
+    ? getTrackedSymbols(env.stockFetchLimit)
+    : getTrackedSymbols();
 const STALE_BULK_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 const NEWS_CACHE_KEY = 'feed';
 
@@ -195,12 +187,12 @@ function applyAgentChartMetaForBulk(
   }
 }
 
-/** Catalog metadata only in mock mode — live quotes stay pure Tiingo. */
+/** Catalog metadata only in mock mode — live quotes stay pure Yahoo. */
 function enrichQuote(quote: StockQuote): StockQuote {
   if (getMarketDataMode() === 'live') {
     return quote;
   }
-  const catalog = mockStocks.find(s => s.symbol === quote.symbol);
+  const catalog = findCatalogMetadata(quote.symbol);
   if (!catalog) return quote;
   return {
     ...quote,
@@ -208,7 +200,7 @@ function enrichQuote(quote: StockQuote): StockQuote {
     sector: catalog.sector,
     pe: catalog.pe,
     marketCap: catalog.marketCap,
-    volume: quote.volume === '—' ? catalog.volume : quote.volume,
+    volume: quote.volume,
   };
 }
 
@@ -477,7 +469,7 @@ async function tryStaleNewsCache(warning: string): Promise<NewsCacheBundle | nul
 }
 
 const CHART_PRELOAD_NOTE =
-  '30-day chart preloaded with daily stock refresh (no extra Tiingo call).';
+  '30-day chart preloaded with daily stock refresh (no extra Yahoo call).';
 
 async function withTemporaryQuoteMode<T>(fn: () => Promise<T>): Promise<T> {
   const quoteMode = getQuoteDataMode();
@@ -637,27 +629,8 @@ function findQuoteInBulkCache(symbol: string): StockQuote | null {
   return stale?.data.stocks.find(s => s.symbol.toUpperCase() === sym) ?? null;
 }
 
-function mockNewsArticles(): NewsArticle[] {
-  return mockNews.map(n => ({
-    title: n.title,
-    url: '#',
-    summary: n.summary,
-    source: n.author || 'Financial Times',
-    category: n.category,
-    sentiment: n.sentiment,
-    time_published: new Date(
-      Date.now() - Math.random() * 24 * 60 * 60 * 1000
-    ).toISOString(),
-    ticker_sentiment: n.relatedStocks.map(ticker => ({
-      ticker,
-      relevance_score: '0.8',
-      ticker_sentiment_score:
-        n.sentiment === 'positive' ? '0.5' : n.sentiment === 'negative' ? '-0.5' : '0',
-    })),
-    imageUrl: n.imageUrl,
-    author: n.author,
-    content: n.content,
-  }));
+function demoNewsArticles(): NewsArticle[] {
+  return getDemoNewsArticles();
 }
 
 export async function getMarketSettings(probe = false): Promise<MarketDataSettings> {
@@ -711,6 +684,7 @@ export async function getMarketSettings(probe = false): Promise<MarketDataSettin
     liveReachable,
     liveProbeError,
     stockFetchLimit: env.stockFetchLimit,
+    agentScrapeSymbolLimit: env.agentScrapeSymbolLimit,
     cacheTtlHours: env.marketCacheTtlHours,
     quotesCachedAt,
     newsCachedAt,
@@ -743,9 +717,33 @@ export function updateMarketDataMode(
     provider,
     liveReachable: null,
     stockFetchLimit: env.stockFetchLimit,
+    agentScrapeSymbolLimit: env.agentScrapeSymbolLimit,
     cacheTtlHours: env.marketCacheTtlHours,
     quotesCachedAt: mode !== 'mock' ? quotesCachedAtIso() : undefined,
     newsCachedAt: mode !== 'mock' ? newsCachedAtIso() : undefined,
+  };
+}
+
+/** Agent dashboard shows only symbols in the scrape job catalog slice. */
+function agentDisplayStocks(quotes: StockQuote[]): StockQuote[] {
+  const bySym = new Map(quotes.map(q => [q.symbol.toUpperCase(), enrichQuote(q)]));
+  const out: StockQuote[] = [];
+  for (const sym of getAgentSymbols()) {
+    const q = bySym.get(sym.toUpperCase());
+    if (q) out.push(q);
+  }
+  return out;
+}
+
+function agentStocksMeta(
+  stocks: StockQuote[],
+  extra: Omit<MarketFetchMeta, 'dataMode' | 'fetched'>
+): MarketFetchMeta {
+  return {
+    dataMode: 'agent',
+    fetched: stocks.length,
+    agentSymbolLimit: env.agentScrapeSymbolLimit,
+    ...extra,
   };
 }
 
@@ -774,7 +772,7 @@ export async function getStockQuote(symbol: string): Promise<StockQuote> {
     return enriched;
   }
 
-  if (!env.tiingoChartOnDemand) {
+  if (!env.liveChartOnDemand) {
     throw new AppError(
       `No live quote for ${symbol} yet. Wait for the daily stock refresh to finish or click Refresh.`,
       503,
@@ -782,25 +780,11 @@ export async function getStockQuote(symbol: string): Promise<StockQuote> {
     );
   }
 
-  const liveProvider = resolveLiveProvider();
-  if (liveProvider === YAHOO_PROVIDER) {
-    const chartQuotes = await fetchYahooChartQuotes(symbol);
-    const quote = enrichQuote(quoteFromYahooQuotes(symbol, chartQuotes));
-    const tsKey = cacheKeyForMode(cacheKey('market', 'timeseries', symbol));
-    setMemoryCached(tsKey, timeSeriesFromYahooQuotes(chartQuotes));
-    chartMetaBySymbol.set(symbol, { chartSource: 'yahoo', chartNote: CHART_PRELOAD_NOTE });
-    setMemoryCached(key, quote);
-    return quote;
-  }
-
-  const bars = await fetchTiingoDailyBars(symbol);
-  const quote = enrichQuote(quoteFromTiingoBars(symbol, bars));
+  const chartQuotes = await fetchYahooChartQuotes(symbol);
+  const quote = enrichQuote(quoteFromYahooQuotes(symbol, chartQuotes));
   const tsKey = cacheKeyForMode(cacheKey('market', 'timeseries', symbol));
-  setMemoryCached(tsKey, timeSeriesFromTiingoBars(bars));
-  chartMetaBySymbol.set(symbol, {
-    chartSource: 'tiingo',
-    chartNote: CHART_PRELOAD_NOTE,
-  });
+  setMemoryCached(tsKey, timeSeriesFromYahooQuotes(chartQuotes));
+  chartMetaBySymbol.set(symbol, { chartSource: 'yahoo', chartNote: CHART_PRELOAD_NOTE });
   setMemoryCached(key, quote);
   return quote;
 }
@@ -907,56 +891,49 @@ export async function getAllStocks(options?: {
   if (mode === 'agent') {
     const agentBulk = readAgentMemoryBulk();
     if (agentBulk?.quotes.length) {
+      const stocks = agentDisplayStocks(agentBulk.quotes);
       return {
-        stocks: agentBulk.quotes,
-        meta: {
-          dataMode: 'agent',
+        stocks,
+        meta: agentStocksMeta(stocks, {
           provider: AGENT_PROVIDER,
-          fetched: agentBulk.quotes.length,
           failed: 0,
           fromCache: true,
           cacheSource: 'memory',
           cacheNote:
             'Stock list from last agent chart job (LLM-derived last close). Run Start for fresh 30-day charts.',
           seriesBySymbol: {},
-        },
+        }),
       };
     }
 
-    const stocks = getAllMockQuotes(STOCK_SYMBOLS);
+    const stocks = getAllMockQuotes(getAgentSymbols());
     logMarketStocks('hit', { source: 'mock-catalog', count: stocks.length });
     return {
       stocks,
-      meta: {
-        dataMode: 'agent',
+      meta: agentStocksMeta(stocks, {
         provider: MOCK_PROVIDER,
-        fetched: stocks.length,
         failed: 0,
         fromCache: true,
         cacheSource: 'mock-catalog',
         cacheNote:
           'Symbol list from catalog (display only). 30-day charts come from Agent Start — LLM prompt only.',
         seriesBySymbol: {},
-      },
+      }),
     };
   }
 
   assertLiveMarketConfigured();
 
   const liveProvider = resolveLiveProvider();
-  const providerSource: MarketStocksCacheSource =
-    liveProvider === YAHOO_PROVIDER ? 'provider-yahoo' : 'provider-tiingo';
+  const providerSource: MarketStocksCacheSource = 'provider-yahoo';
   logMarketStocks('provider-fetch-start', {
     source: providerSource,
     provider: liveProvider,
     symbolCount: STOCK_SYMBOLS.length,
   });
-  const bulk =
-    liveProvider === YAHOO_PROVIDER
-      ? await fetchYahooBulk(STOCK_SYMBOLS)
-      : await fetchTiingoBulk(STOCK_SYMBOLS);
+  const bulk = await fetchYahooBulk(STOCK_SYMBOLS);
   const stockResults = bulk.quotes.map(enrichQuote);
-  const providerLabel = liveProvider === YAHOO_PROVIDER ? 'Yahoo' : 'Tiingo';
+  const providerLabel = 'Yahoo';
 
   for (const enriched of stockResults) {
     setMemoryCached(
@@ -1016,6 +993,7 @@ export async function getAllStocks(options?: {
     docId: `${env.firebaseAppInstanceId}_${firestoreSlot}`,
   });
 
+  assertLiveQuoteProvider(meta.provider, 'getAllStocks/live');
   return { stocks: stockResults, meta };
 }
 
@@ -1069,7 +1047,7 @@ export async function getMarketNewsWithMeta(options?: {
   }
 
   if (mode === 'mock') {
-    const articles = mockNewsArticles();
+    const articles = demoNewsArticles();
     const meta: MarketNewsMeta = {
       dataMode: 'mock',
       provider: MOCK_PROVIDER,
@@ -1096,57 +1074,22 @@ export async function getMarketNewsWithMeta(options?: {
 
   assertLiveMarketConfigured();
 
-  const liveProvider = resolveLiveProvider();
-  if (liveProvider === YAHOO_PROVIDER) {
-    const articles = mockNewsArticles();
-    const meta: MarketNewsMeta = {
-      dataMode: 'live',
-      provider: YAHOO_PROVIDER,
-      count: articles.length,
-      fromCache: false,
-      cachedAt: new Date().toISOString(),
-      warnings: [
-        'News from demo catalog — Yahoo chart API has no news feed. Use Tiingo or Agent mode for live news.',
-      ],
-      ...cacheMeta,
-    };
-    const bundle = { articles, meta };
-    setMemoryCached(newsCacheKey(), bundle);
-    void writeNewsToFirestore('live', bundle);
-    return bundle;
-  }
-
-  try {
-    const articles = await fetchTiingoMarketNews();
-    const meta: MarketNewsMeta = {
-      dataMode: 'live',
-      provider: TIINGO_PROVIDER,
-      count: articles.length,
-      fromCache: false,
-      cachedAt: new Date().toISOString(),
-      ...cacheMeta,
-    };
-    const bundle = { articles, meta };
-    setMemoryCached(newsCacheKey(), bundle);
-    void writeNewsToFirestore('live', bundle);
-    return bundle;
-  } catch (error) {
-    console.warn('Tiingo news failed:', error);
-    const stale = await tryStaleNewsCache(
-      'Could not reach Tiingo news. Showing last cached articles if available.'
-    );
-    if (stale) return stale;
-
-    const newsForbidden = isTiingoNewsForbidden(error);
-    const detail = error instanceof Error ? error.message : 'Unknown error';
-    throw new AppError(
-      newsForbidden
-        ? 'Live news requires Tiingo News API (not included on free EOD plan). Switch to Mock mode or upgrade at tiingo.com/products/news-feed-api.'
-        : `Live news unavailable (Tiingo): ${detail}`,
-      503,
-      newsForbidden ? 'MARKET_NEWS_FORBIDDEN' : 'MARKET_NEWS_UNAVAILABLE'
-    );
-  }
+  const articles = demoNewsArticles();
+  const meta: MarketNewsMeta = {
+    dataMode: 'live',
+    provider: YAHOO_PROVIDER,
+    count: articles.length,
+    fromCache: false,
+    cachedAt: new Date().toISOString(),
+    warnings: [
+      'News from demo catalog — Yahoo Finance has no news feed in this app. Agent mode uses the same quote-source news path.',
+    ],
+    ...cacheMeta,
+  };
+  const bundle = { articles, meta };
+  setMemoryCached(newsCacheKey(), bundle);
+  void writeNewsToFirestore('live', bundle);
+  return bundle;
 }
 
 export function getTimeSeriesMeta(symbol: string): Record<string, unknown> | undefined {
@@ -1209,16 +1152,13 @@ export async function getTimeSeriesDaily(symbol: string): Promise<TimeSeriesData
     return preloaded;
   }
 
-  if (env.tiingoChartOnDemand) {
+  if (env.liveChartOnDemand) {
     try {
-      const data =
-        liveProvider === YAHOO_PROVIDER
-          ? await fetchYahooTimeSeries(symbol)
-          : await fetchTiingoTimeSeries(symbol);
+      const data = await fetchYahooTimeSeries(symbol);
       setMemoryCached(key, data);
       chartMetaBySymbol.set(symbol, {
         chartSource: liveProvider,
-        chartNote: `Chart fetched on demand from ${liveProvider === YAHOO_PROVIDER ? 'Yahoo' : 'Tiingo'}.`,
+        chartNote: 'Chart fetched on demand from Yahoo Finance.',
       });
       return data;
     } catch (error) {
@@ -1252,7 +1192,7 @@ export function getEnrichedStockInputs(stocks: StockQuote[]) {
         marketCap: stock.marketCap ?? 'N/A',
       };
     }
-    const catalog = mockStocks.find(s => s.symbol === stock.symbol);
+    const catalog = findCatalogMetadata(stock.symbol);
     return {
       symbol: stock.symbol,
       name: catalog?.name || stock.name || stock.symbol,
@@ -1268,7 +1208,5 @@ export async function probeLiveProvider(): Promise<{
   reachable: boolean;
   error?: string;
 }> {
-  return resolveLiveProvider() === YAHOO_PROVIDER
-    ? probeYahooProvider()
-    : probeTiingoProvider();
+  return probeYahooProvider();
 }

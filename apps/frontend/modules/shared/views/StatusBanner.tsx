@@ -56,19 +56,13 @@ export function StatusBanner({ error, errorCode, warnings = [], loading }: Statu
           <div>
             <p className="font-medium">{errorTitle(errorCode)}</p>
             <p className="mt-1 text-red-800">{error}</p>
-            {errorCode === 'MARKET_LIVE_UNAVAILABLE' &&
-              (error?.includes('not configured') ? (
-                <p className="mt-2 text-red-700">
-                  Toggle to <strong>Mock</strong> in the header, or add{' '}
-                  <code className="text-xs">TIINGO_API_TOKEN</code> in{' '}
-                  <code className="text-xs">.env</code> and restart the backend.
-                </p>
-              ) : (
-                <p className="mt-2 text-red-700">
-                  Toggle to <strong>Mock</strong> in the header, or wait for Tiingo hourly limits
-                  to reset and click <strong>Refresh</strong>.
-                </p>
-              ))}
+            {errorCode === 'MARKET_LIVE_UNAVAILABLE' && (
+              <p className="mt-2 text-red-700">
+                Toggle to <strong>Mock</strong> in the header, or wait for Yahoo rate limits to reset
+                and click <strong>Refresh</strong>. Run a stock refresh so charts preload from bulk
+                cache.
+              </p>
+            )}
             {(errorCode === 'API_EMPTY_RESPONSE' ||
               errorCode === 'API_INVALID_JSON' ||
               errorCode === 'AGENT_ESTIMATE_FAILED') && (

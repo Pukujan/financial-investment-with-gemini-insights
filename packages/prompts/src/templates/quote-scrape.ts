@@ -34,11 +34,25 @@ const V2026_05_20: PromptCatalogEntry = {
   supportsGoldenHint: true,
 };
 
+const V2026_05_21: PromptCatalogEntry = {
+  id: 'quote-scrape',
+  version: '2026-05-21',
+  label: 'Quote scrape v3 (web EOD)',
+  summary: 'Requires public web sources and golden EOD alignment for latest quote.',
+  changelog: 'Same web-scrape discipline as chart-scrape v3 for spot quotes.',
+  supportsRag: true,
+  supportsGoldenHint: true,
+};
+
 export const QUOTE_SCRAPE_CATALOG: PromptCatalogEntry[] = [
   V2026_05_16,
   V2026_05_19,
   V2026_05_20,
+  V2026_05_21,
 ];
+
+const WEB_SOURCES =
+  'Yahoo Finance quote page, Google Finance, Nasdaq.com, or the company investor relations site';
 
 function buildQuoteV1(ctx: QuoteScrapeContext): ResolvedPrompt {
   const goldenBlock = ctx.goldenHint?.trim()
@@ -91,7 +105,27 @@ Echo promptVersion "2026-05-20". In reasoning, list each symbol's deviation from
   };
 }
 
+function buildQuoteV3(ctx: QuoteScrapeContext): ResolvedPrompt {
+  const goldenBlock = ctx.goldenHint?.trim()
+    ? `\nGolden reference (Live/Yahoo last session EOD — price and previousClose must match within 1.5%):\n${ctx.goldenHint}`
+    : '';
+  const ragBlock = ctx.ragContext?.trim() ? `\n${ctx.ragContext}` : '';
+  return {
+    id: 'quote-scrape',
+    version: '2026-05-21',
+    system: `You are a financial data extraction agent (quote-scrape 2026-05-21).
+Obtain REAL latest EOD quotes from public web pages (${WEB_SOURCES}) — not from memory.
+
+Respond ONLY with minified JSON:
+{"promptVersion":"2026-05-21","reasoning":"Per symbol: site used, EOD close read, deviation from golden if any","sources":["https://..."],"quotes":[{"symbol":"AAPL","name":"Apple Inc.","price":178.5,"change":1.2,"changePercent":0.68,"high":180,"low":176,"open":177,"previousClose":177.3,"volume":"45M","sector":"Technology"}]}
+Rules: US equities; numeric OHLC; https sources required; do not invent prices; RAG only for names/sectors.`,
+    user: `Extract current EOD stock quotes for: ${ctx.symbols.join(', ')}.
+Echo promptVersion "2026-05-21". Include sources URLs.${goldenBlock}${ragBlock}`,
+  };
+}
+
 export function resolveQuoteScrape(version: string, ctx: QuoteScrapeContext): ResolvedPrompt {
+  if (version === '2026-05-21') return buildQuoteV3(ctx);
   if (version === '2026-05-20') return buildQuoteV2Ab(ctx);
   if (version === '2026-05-19') return buildQuoteV2(ctx);
   return buildQuoteV1(ctx);

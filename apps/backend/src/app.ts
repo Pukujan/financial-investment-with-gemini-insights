@@ -14,6 +14,14 @@ export function createApp() {
   app.use('/api', requireDemoAuth);
   app.use('/api', apiRoutes);
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({
+      success: false,
+      error: 'API route not found',
+      code: 'API_NOT_FOUND',
+    });
+  });
+
   app.use(errorHandler);
 
   return app;

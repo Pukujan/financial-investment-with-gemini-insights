@@ -1,6 +1,5 @@
-import type { PromptAbTestJob, PromptEvalGroundTruthPayload } from '@investai/shared';
-import type { AiCostTier } from '@investai/shared';
-import { http } from '../../../shared/api/http';
+import type { PromptAbTestJob, PromptEvalGroundTruthPayload, AiCostTier } from '@investai/shared';
+import { http } from '@/shared/api/http';
 
 export const promptAbJobApi = {
   startJob: (options: {

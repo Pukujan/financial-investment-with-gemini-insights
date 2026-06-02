@@ -82,7 +82,7 @@ export function DataSourcesView() {
           <h2 className="text-2xl font-semibold text-slate-900">Agent data sources</h2>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          In Agent mode, nothing comes from Tiingo or a live exchange. The pipeline below is the
+          In Agent mode, chart history is LLM-generated (not downloaded from Yahoo). The pipeline below is the
           full path from ticker list to what you see on the Dashboard.
         </p>
         {agentScrapeUsage && (

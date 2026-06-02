@@ -37,8 +37,9 @@ const CATALOG: PromptCatalogEntry[] = [
 export function normalizePromptVersion(label?: string): PromptVersion | undefined {
   if (!label?.trim()) return undefined;
   const trimmed = label.trim().toLowerCase();
+  if (trimmed === 'v3' || trimmed === 'v-3') return '2026-05-21';
   if (trimmed === 'v2' || trimmed === 'v-2') return '2026-05-20';
-  if (trimmed === 'v1' || trimmed === 'v-1') return '2026-05-19';
+  if (trimmed === 'v1' || trimmed === 'v-1') return '2026-05-16';
   if (trimmed.startsWith('v-')) return trimmed.slice(2);
   return trimmed;
 }

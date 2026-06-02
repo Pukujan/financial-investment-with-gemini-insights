@@ -4,10 +4,13 @@ import type { EstimateAccuracyRating } from './estimateEval.js';
 import type { ChartPriceConvention } from './tradingDays.js';
 import type { PromptEvalComparisonMode, PromptEvalGoldenSymbol, PromptEvalTierSymbol } from './promptEval.js';
 
-/** Production prompt arm for A/B tab (not v2). */
-export const PROMPT_AB_VERSION_A_DEFAULT = '2026-05-19';
-/** Experimental v2 — A/B tab only; main dashboard keeps PROMPT_LATEST. */
-export const PROMPT_AB_VERSION_B_DEFAULT = '2026-05-20';
+/** Chart-scrape v1 baseline — A/B arm A. */
+export const PROMPT_AB_VERSION_A_DEFAULT = '2026-05-16';
+/** Chart-scrape v3 web EOD — A/B arm B. */
+export const PROMPT_AB_VERSION_B_DEFAULT = '2026-05-21';
+
+/** Symbols per A/B run (one LLM chart call per symbol per arm). */
+export const PROMPT_AB_SYMBOL_LIMIT = 10;
 
 export interface PromptAbCostEstimateSnapshot {
   estimatedTokens: TokenUsageEstimate;

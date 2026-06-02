@@ -1,3 +1,6 @@
+/**
+ * Pipeline contract: @see ../../workflows/agent-chart.pipeline.ts (AGENT_CHART_PIPELINE)
+ */
 import { randomUUID } from 'crypto';
 import { formatRagContextBlock, getDefaultPromptSuite } from '@investai/prompts';
 import type { AgentScrapeJob, AgentJobStep, AiCostTier } from '@investai/shared';
@@ -525,8 +528,8 @@ export async function runAgentScrapeJob(jobId: string): Promise<void> {
       try {
         const yahooBars = await resolveYahooChartQuotes(sym);
         liveSeriesBySymbol[sym] = timeSeriesFromYahooQuotes(yahooBars);
-        if (env.tiingoBatchDelayMs > 0) {
-          await sleep(env.tiingoBatchDelayMs);
+        if (env.agentScrapeBatchDelayMs > 0) {
+          await sleep(env.agentScrapeBatchDelayMs);
         }
       } catch (err) {
         console.warn(`[chart-eval] Yahoo reference failed for ${sym}:`, err);
