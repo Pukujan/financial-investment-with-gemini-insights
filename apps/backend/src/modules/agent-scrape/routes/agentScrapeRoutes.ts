@@ -27,6 +27,13 @@ import {
   postPromptAbTestJob,
   getPromptAbTestJobHandler,
   getActivePromptAbTestJobHandler,
+  getPromptAbV2TestHistoryHandler,
+  getPromptAbV2TestEstimate,
+  postPromptAbV2TestSync,
+  postPromptAbV2Test,
+  postPromptAbV2TestJob,
+  getPromptAbV2TestJobHandler,
+  getActivePromptAbV2TestJobHandler,
   getLastEval,
   getStatus,
   listGolden,
@@ -72,5 +79,13 @@ router.post('/eval/prompt-ab/jobs', postPromptAbTestJob);
 router.get('/eval/prompt-ab/jobs/active', getActivePromptAbTestJobHandler);
 router.get('/eval/prompt-ab/jobs/:id', getPromptAbTestJobHandler);
 router.post('/eval/prompt-ab', postPromptAbTest);
+
+router.get('/eval/prompt-ab-v2', getPromptAbV2TestHistoryHandler);
+router.get('/eval/prompt-ab-v2/estimate', getPromptAbV2TestEstimate);
+router.post('/eval/prompt-ab-v2/sync', postPromptAbV2TestSync);
+router.post('/eval/prompt-ab-v2/jobs', postPromptAbV2TestJob);
+router.get('/eval/prompt-ab-v2/jobs/active', getActivePromptAbV2TestJobHandler);
+router.get('/eval/prompt-ab-v2/jobs/:id', getPromptAbV2TestJobHandler);
+router.post('/eval/prompt-ab-v2', postPromptAbV2Test);
 
 export default router;

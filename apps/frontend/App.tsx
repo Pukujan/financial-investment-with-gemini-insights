@@ -10,6 +10,7 @@ import {
   LineChart,
   FlaskConical,
   GitCompare,
+  Layers,
 } from 'lucide-react';
 import {
   MarketDataProvider,
@@ -25,6 +26,7 @@ import {
   PromptEvalDashboard,
 } from '@/modules/market';
 import { PromptAbDashboard, PromptAbRunProvider } from '@/modules/prompt-ab';
+import { PromptAbV2Dashboard, PromptAbV2RunProvider } from '@/modules/prompt-ab-v2';
 import { AIInsightsProvider } from '@/modules/ai-insights';
 import { PortfolioProvider } from '@/modules/portfolio';
 import { Dashboard } from '@/modules/dashboard';
@@ -71,6 +73,7 @@ function AppContent({
     { id: 'chart-eval' as View, label: 'Agent run history', icon: LineChart },
     { id: 'prompt-eval' as View, label: 'Eval prompt test', icon: FlaskConical },
     { id: 'prompt-ab' as View, label: 'Prompt A/B', icon: GitCompare },
+    { id: 'prompt-ab-v2' as View, label: 'Agent v2 A/B', icon: Layers },
   ];
 
   return (
@@ -172,6 +175,7 @@ function AppContent({
         {currentView === 'chart-eval' && <ChartEvalDashboard />}
         {currentView === 'prompt-eval' && <PromptEvalDashboard />}
         {currentView === 'prompt-ab' && <PromptAbDashboard />}
+        {currentView === 'prompt-ab-v2' && <PromptAbV2Dashboard />}
       </main>
       <AgentQueueFloat />
     </div>
@@ -195,9 +199,11 @@ export default function App() {
   return (
     <AuthProvider>
       <PromptAbRunProvider>
-        <PromptEvalRunProvider>
-          <AppWithNavigation />
-        </PromptEvalRunProvider>
+        <PromptAbV2RunProvider>
+          <PromptEvalRunProvider>
+            <AppWithNavigation />
+          </PromptEvalRunProvider>
+        </PromptAbV2RunProvider>
       </PromptAbRunProvider>
     </AuthProvider>
   );

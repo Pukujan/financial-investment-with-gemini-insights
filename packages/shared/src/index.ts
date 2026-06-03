@@ -181,6 +181,31 @@ export {
   AGENT_V2_COMPANY_NAMES,
   AGENT_V2_SYMBOLS,
 } from './stocksAgentV2.js';
+
+export {
+  PROMPT_AB_V2_SYMBOL_LIMIT,
+  PROMPT_AB_V2_SYMBOLS,
+  PROMPT_AB_V2_PROMPT_IDS,
+  PROMPT_AB_V2_PROMPT_LABELS,
+} from './promptAbV2Test.js';
+
+export type {
+  PromptAbV2PromptId,
+  PromptAbV2DeterministicAnchor,
+  PromptAbV2CellResult,
+  PromptAbV2PromptArmSummary,
+  PromptAbV2TierSummary,
+  PromptAbV2RunDelta,
+  PromptAbV2Experiment,
+  PromptAbV2History,
+  PromptAbV2Summary,
+  PromptAbV2JobStatus,
+  PromptAbV2StepStatus,
+  PromptAbV2QueueItem,
+  PromptAbV2JobStep,
+  PromptAbV2Job,
+  PromptAbV2CostEstimate,
+} from './promptAbV2Test.js';
 export type { LiveQuoteProvider } from './contracts/market.js';
 
 export {

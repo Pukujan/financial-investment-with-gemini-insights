@@ -63,7 +63,8 @@ export type AppViewId =
   | 'estimate-eval'
   | 'chart-eval'
   | 'prompt-eval'
-  | 'prompt-ab';
+  | 'prompt-ab'
+  | 'prompt-ab-v2';
 
 interface MarketDataContextType {
   stocks: StockQuote[];

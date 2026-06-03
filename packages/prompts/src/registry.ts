@@ -15,6 +15,7 @@ import { resolveNewsScrape, NEWS_SCRAPE_CATALOG } from './templates/news-scrape.
 import { resolveQuoteScrape, QUOTE_SCRAPE_CATALOG } from './templates/quote-scrape.js';
 import { resolveAiInsights, AI_INSIGHTS_CATALOG } from './templates/ai-insights.js';
 import { resolveAiPrediction, AI_PREDICTION_CATALOG } from './templates/ai-prediction.js';
+import { AGENT_V2_HYBRID_CATALOG } from './templates/agent-v2-hybrid.js';
 
 /** Latest recommended version per prompt (bump when shipping a new template). */
 export const PROMPT_LATEST: Record<PromptId, PromptVersion> = {
@@ -31,6 +32,7 @@ const CATALOG: PromptCatalogEntry[] = [
   ...NEWS_SCRAPE_CATALOG,
   ...AI_INSIGHTS_CATALOG,
   ...AI_PREDICTION_CATALOG,
+  ...AGENT_V2_HYBRID_CATALOG,
 ];
 
 /** Map UI labels like `v-2026-05-19` or `v2` to registry versions. */
@@ -97,3 +99,9 @@ export function resolvePredictionPrompt(
 ): ResolvedPrompt {
   return resolveAiPrediction(resolvePromptVersion('ai-prediction', versionLabel), ctx);
 }
+
+export {
+  resolveAgentV2HybridPrompt,
+  resolveAgentV2HybridByVersion,
+  AGENT_V2_HYBRID_CATALOG,
+} from './templates/agent-v2-hybrid.js';

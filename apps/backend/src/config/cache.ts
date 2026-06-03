@@ -29,6 +29,7 @@ export const firestoreCollections = {
   ragRetrievalLogs: 'ragRetrievalLogs',
   promptEval: 'promptEvalExperiments',
   promptAb: 'promptAbExperiments',
+  promptAbV2: 'promptAbV2Experiments',
   chartEval: 'chartEvalRuns',
   estimateEval: 'estimateEvalRuns',
   portfolioPrefix: (instanceId: string) => `portfolios_${instanceId}`,

@@ -69,6 +69,19 @@ import {
   startPromptAbTestJob,
 } from '../services/promptAbTestJobService.js';
 import {
+  estimatePromptAbV2,
+  getPromptAbV2History,
+  runPromptAbV2TestWithProgress,
+  syncPromptAbV2FromClient,
+} from '../../agent-v2-eval/promptAbV2TestService.js';
+import {
+  createPromptAbV2Job,
+  getActivePromptAbV2Job,
+  getPromptAbV2Job,
+  prunePromptAbV2Jobs,
+  startPromptAbV2Job,
+} from '../../agent-v2-eval/promptAbV2TestJobService.js';
+import {
   PROMPT_AB_VERSION_A_DEFAULT,
   PROMPT_AB_VERSION_B_DEFAULT,
   PROMPT_AB_SYMBOL_LIMIT,
@@ -486,4 +499,48 @@ export const getPromptAbTestJobHandler = asyncHandler(async (req: Request, res: 
 
 export const getActivePromptAbTestJobHandler = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, { job: getActivePromptAbTestJob() });
+});
+
+export const getPromptAbV2TestHistoryHandler = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, await getPromptAbV2History());
+});
+
+export const getPromptAbV2TestEstimate = asyncHandler(async (req: Request, res: Response) => {
+  sendSuccess(res, await estimatePromptAbV2());
+});
+
+export const postPromptAbV2TestSync = asyncHandler(async (req: Request, res: Response) => {
+  const records = Array.isArray(req.body?.records) ? req.body.records : [];
+  sendSuccess(res, await syncPromptAbV2FromClient(records));
+});
+
+export const postPromptAbV2Test = asyncHandler(async (req: Request, res: Response) => {
+  assertPromptEvalCooldown(req);
+  const { experiment, summary } = await runPromptAbV2TestWithProgress();
+  recordPromptEvalCooldownRun(req);
+  sendSuccess(res, { experiment, summary }, 201);
+});
+
+export const postPromptAbV2TestJob = asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const job = createPromptAbV2Job();
+    startPromptAbV2Job(job.id, req);
+    prunePromptAbV2Jobs();
+    sendSuccess(res, job, 202);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not start Agent v2 A/B job';
+    throw new AppError(message, 409, 'PROMPT_AB_V2_JOB_BUSY');
+  }
+});
+
+export const getPromptAbV2TestJobHandler = asyncHandler(async (req: Request, res: Response) => {
+  const job = getPromptAbV2Job(String(req.params.id));
+  if (!job) {
+    throw new AppError('Agent v2 A/B job not found', 404, 'PROMPT_AB_V2_JOB_NOT_FOUND');
+  }
+  sendSuccess(res, job);
+});
+
+export const getActivePromptAbV2TestJobHandler = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, { job: getActivePromptAbV2Job() });
 });
