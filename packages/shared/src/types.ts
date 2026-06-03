@@ -134,8 +134,8 @@ export interface PortfolioDocument {
   lastUpdated: string;
 }
 
-/** `live` = Yahoo Finance API. `mock` = static catalog. `agent` = LLM scrape agents (OpenRouter). */
-export type MarketDataMode = 'live' | 'mock' | 'agent';
+/** `live` = Yahoo Finance API. `mock` = static catalog. `agent` = LLM scrape (OpenRouter). `agent-v2` = Yahoo trend + synthetic demo news + scenario prediction. */
+export type MarketDataMode = 'live' | 'mock' | 'agent' | 'agent-v2';
 
 export type MarketLiveProvider = 'yahoo';
 export type MarketAgentProvider = 'openrouter-agent';

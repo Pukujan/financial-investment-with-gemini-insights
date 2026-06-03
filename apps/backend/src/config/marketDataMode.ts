@@ -39,11 +39,14 @@ export function setQuoteDataMode(mode: QuoteDataMode): void {
 
 export function updateMarketDataMode(mode: MarketDataMode): QuoteDataMode {
   const prev = runtimeMode;
-  if (mode === 'live' || mode === 'mock') {
-    runtimeQuoteMode = mode;
+  if (mode === 'live' || mode === 'mock' || mode === 'agent-v2') {
+    runtimeQuoteMode = mode === 'mock' ? 'mock' : 'live';
   }
   const preserveCache =
-    (prev === 'live' && mode === 'agent') || (prev === 'agent' && mode === 'live');
+    (prev === 'live' && mode === 'agent') ||
+    (prev === 'agent' && mode === 'live') ||
+    (prev === 'live' && mode === 'agent-v2') ||
+    (prev === 'agent-v2' && mode === 'live');
   setMarketDataMode(mode, { preserveCache });
   return runtimeQuoteMode;
 }

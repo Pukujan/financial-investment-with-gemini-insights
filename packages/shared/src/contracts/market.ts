@@ -25,9 +25,14 @@ export function dataModeAllowsMockCatalog(mode: MarketDataMode): boolean {
   return mode === 'mock';
 }
 
+/** Agent v2 always uses Yahoo live quotes and charts. */
+export function marketModeUsesYahooLive(mode: MarketDataMode): boolean {
+  return mode === 'live' || mode === 'agent-v2';
+}
+
 /** Agent mode uses LLM charts; table quotes follow quoteDataMode (live | mock). */
 export function dataModeUsesLiveQuotes(mode: MarketDataMode, quoteDataMode: 'live' | 'mock'): boolean {
-  if (mode === 'live') return true;
+  if (marketModeUsesYahooLive(mode)) return true;
   if (mode === 'agent') return quoteDataMode === 'live';
   return false;
 }

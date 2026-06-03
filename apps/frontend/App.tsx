@@ -48,7 +48,7 @@ function AppContent({
   const { lastUpdated, dataMode, liveProvider } = useMarketData();
   const { loginAvailable, authenticated, logout, requestLogin } = useAuth();
   const liveLabel =
-    dataMode === 'live'
+    dataMode === 'live' || dataMode === 'agent-v2'
       ? liveProvider === 'yahoo'
         ? 'Live (Yahoo)'
         : 'Live (Yahoo)'
@@ -150,6 +150,12 @@ function AppContent({
             <p className="py-2 text-xs text-amber-800 border-t border-amber-100 bg-amber-50/80">
               Agent mode is in active development — chart scrape, cache, and eval tools may be
               unstable. Use Live mode for reliable market data.
+            </p>
+          )}
+          {dataMode === 'agent-v2' && (
+            <p className="py-2 text-xs text-emerald-900 border-t border-emerald-100 bg-emerald-50/80">
+              Agent v2 uses Yahoo 30-day charts, synthetic demo news (cached 1 day), and deterministic
+              7-day scenario predictions — no live news APIs.
             </p>
           )}
         </div>

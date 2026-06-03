@@ -1,4 +1,5 @@
 import type { MarketDataMode, MarketDataSettings, NewsArticle, StockQuote, TimeSeriesData } from '@investai/shared';
+import { marketModeUsesYahooLive } from '@investai/shared';
 import { findCatalogMetadata, getTrackedSymbols } from '../../../data/symbolCatalog.js';
 import { getDemoNewsArticles } from '../../../data/demoNewsCatalog.js';
 import { assertLiveQuoteProvider } from '../../../contracts/marketPath.js';
@@ -643,12 +644,15 @@ export async function getMarketSettings(probe = false): Promise<MarketDataSettin
   if (dataMode === 'live' && !isLiveMarketConfigured()) {
     liveReachable = false;
     liveProbeError = liveMarketConfigError();
-  } else if (dataMode === 'live' && quotesCachedAt && !probe) {
+  } else if (marketModeUsesYahooLive(dataMode) && quotesCachedAt && !probe) {
     liveReachable = true;
-  } else if (probe && dataMode === 'live') {
+  } else if (probe && marketModeUsesYahooLive(dataMode)) {
     const probeResult = await probeLiveProvider();
     liveReachable = probeResult.reachable;
     liveProbeError = probeResult.error;
+  } else if (marketModeUsesYahooLive(dataMode) && !isLiveMarketConfigured()) {
+    liveReachable = false;
+    liveProbeError = liveMarketConfigError();
   } else if (dataMode === 'agent') {
     const quoteMode = getQuoteDataMode();
     if (quoteMode === 'mock') {
@@ -669,7 +673,7 @@ export async function getMarketSettings(probe = false): Promise<MarketDataSettin
 
   const quoteMode = getQuoteDataMode();
   const provider =
-    dataMode === 'live'
+    marketModeUsesYahooLive(dataMode)
       ? resolveLiveProvider()
       : dataMode === 'agent'
         ? quoteMode === 'live'
@@ -695,8 +699,8 @@ export function updateMarketDataMode(
   mode: MarketDataMode,
   quoteDataMode?: QuoteDataMode
 ): MarketDataSettings {
-  if (mode !== 'live' && mode !== 'mock' && mode !== 'agent') {
-    throw new AppError('dataMode must be "live", "mock", or "agent"', 400, 'INVALID_MARKET_MODE');
+  if (mode !== 'live' && mode !== 'mock' && mode !== 'agent' && mode !== 'agent-v2') {
+    throw new AppError('dataMode must be "live", "mock", "agent", or "agent-v2"', 400, 'INVALID_MARKET_MODE');
   }
   if (quoteDataMode && quoteDataMode !== 'live' && quoteDataMode !== 'mock') {
     throw new AppError('quoteDataMode must be "live" or "mock"', 400, 'INVALID_QUOTE_MODE');
@@ -704,7 +708,7 @@ export function updateMarketDataMode(
   applyMarketDataMode(mode);
   if (quoteDataMode) setQuoteDataMode(quoteDataMode);
   const provider =
-    mode === 'live'
+    mode === 'live' || mode === 'agent-v2'
       ? resolveLiveProvider()
       : mode === 'agent'
         ? getQuoteDataMode() === 'live'
@@ -816,7 +820,7 @@ export async function getAllStocks(options?: {
     instanceId: env.firebaseAppInstanceId,
   });
 
-  if (mode === 'live') {
+  if (marketModeUsesYahooLive(mode)) {
     const bulkKey = bulkStocksCacheKey();
     const cached = getMemoryCached<BulkStocksCache>(bulkKey, memoryCacheTtl.marketQuoteMs);
     if (cached) {
@@ -1033,6 +1037,20 @@ export async function getMarketNewsWithMeta(options?: {
     }
   }
 
+  if (mode === 'agent-v2') {
+    return {
+      articles: [],
+      meta: {
+        dataMode: 'agent-v2',
+        provider: YAHOO_PROVIDER,
+        count: 0,
+        warnings: [
+          'Agent v2 uses synthetic demo news per symbol on the Dashboard (cached 1 day). This tab does not fetch live news.',
+        ],
+      },
+    };
+  }
+
   if (mode === 'mock') {
     const articles = demoNewsArticles();
     const meta: MarketNewsMeta = {
@@ -1169,7 +1187,7 @@ export async function getTimeSeriesDaily(symbol: string): Promise<TimeSeriesData
 export function getEnrichedStockInputs(stocks: StockQuote[]) {
   const mode = getMarketDataMode();
   return stocks.slice(0, 8).map(stock => {
-    if (mode === 'live') {
+    if (marketModeUsesYahooLive(mode)) {
       return {
         symbol: stock.symbol,
         name: stock.name || stock.symbol,

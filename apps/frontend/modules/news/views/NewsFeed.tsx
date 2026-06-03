@@ -90,6 +90,13 @@ export function NewsFeed() {
         loading={loading}
       />
 
+      {!loading && dataMode === 'agent-v2' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Agent v2 synthetic demo news is generated per symbol on the Dashboard from Yahoo 30-day
+          trend data (cached 1 day). This tab does not use live news APIs.
+        </div>
+      )}
+
       {!loading && dataMode === 'live' && news.length === 0 && !displayNewsError && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
           No news articles loaded — check warnings above or

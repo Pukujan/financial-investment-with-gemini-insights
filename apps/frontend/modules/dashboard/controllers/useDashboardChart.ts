@@ -26,6 +26,7 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
   const [chartRange, setChartRange] = useState<ChartRange>('30d');
   const [prediction, setPrediction] = useState<StockPrediction | null>(null);
   const [loadingPrediction, setLoadingPrediction] = useState(false);
+  const [timeSeries, setTimeSeries] = useState<TimeSeriesData[]>([]);
   const chartRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
     setPrediction(null);
     setChartError(null);
     setChartNote(null);
+    setTimeSeries([]);
 
     try {
       let timeSeries: TimeSeriesData[] | null = null;
@@ -77,7 +79,14 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
       }
 
       const note = meta?.chartNote;
-      setChartNote(typeof note === 'string' ? note : null);
+      setChartNote(
+        typeof note === 'string'
+          ? note
+          : dataMode === 'agent-v2'
+            ? '30-day chart from Yahoo Finance (Agent v2).'
+            : null
+      );
+      setTimeSeries(timeSeries);
       setChartData(
         timeSeries.map(item => ({
           date: new Date(item.timestamp).toLocaleDateString('en-US', {
@@ -103,7 +112,7 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
   };
 
   const loadAIPrediction = async () => {
-    if (!selectedStock || chartData.length === 0) return;
+    if (!selectedStock || chartData.length === 0 || dataMode === 'agent-v2') return;
     setLoadingPrediction(true);
     try {
       setPrediction(await dashboardApi.getPrediction(selectedStock, chartData));
@@ -126,6 +135,7 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
     chartRef,
     chartData,
     displayChartData,
+    timeSeries,
     loadingChart,
     chartError,
     chartNote,

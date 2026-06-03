@@ -713,7 +713,7 @@ export function MarketDataProvider({
         const settings = await marketApi.setDataMode(mode);
         applySettings(settings);
         setLiveProvider(
-          mode === 'live'
+          mode === 'live' || mode === 'agent-v2'
             ? settings.provider === 'yahoo'
               ? 'yahoo'
               : 'yahoo'

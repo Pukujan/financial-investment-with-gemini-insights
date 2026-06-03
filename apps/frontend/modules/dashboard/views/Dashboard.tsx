@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Activity, Search, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useMarketData, MarketDataBanner } from '@/modules/market';
 import { usePortfolio } from '@/modules/portfolio';
+import {
+  AgentV2DemoNewsPanel,
+  AgentV2PredictionPanel,
+  useAgentV2StockFlow,
+} from '@/modules/stocks';
 import { useDashboardChart, type ChartRange } from '../controllers/useDashboardChart';
 
 export function Dashboard() {
@@ -16,11 +21,25 @@ export function Dashboard() {
   const { portfolioValue } = usePortfolio();
   const [selectedSector, setSelectedSector] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const agentV2 = useAgentV2StockFlow();
+  const isAgentV2 = dataMode === 'agent-v2';
+  const {
+    demoNews: agentV2News,
+    prediction: agentV2Prediction,
+    loadingNews: agentV2LoadingNews,
+    loadingPrediction: agentV2LoadingPrediction,
+    newsError: agentV2NewsError,
+    loadDemoNews,
+    loadPrediction: loadAgentV2Prediction,
+    reset: resetAgentV2,
+  } = agentV2;
 
   const {
     selectedStock,
     chartRef,
     displayChartData,
+    chartData,
+    timeSeries,
     loadingChart,
     chartError,
     chartNote,
@@ -31,6 +50,14 @@ export function Dashboard() {
     loadChartData,
     loadAIPrediction,
   } = useDashboardChart(stocks, dataMode);
+
+  useEffect(() => {
+    if (!isAgentV2 || !selectedStock || !timeSeries.length) {
+      resetAgentV2();
+      return;
+    }
+    void loadDemoNews(selectedStock, timeSeries);
+  }, [isAgentV2, selectedStock, timeSeries, loadDemoNews, resetAgentV2]);
 
   const enrichedStocks = stocks.map(stock => ({
     ...stock,
@@ -221,6 +248,31 @@ export function Dashboard() {
                           </ResponsiveContainer>
 
                           {/* AI Prediction Section */}
+                          {isAgentV2 ? (
+                            <>
+                              <AgentV2DemoNewsPanel
+                                payload={agentV2News}
+                                loading={agentV2LoadingNews}
+                                error={agentV2NewsError}
+                              />
+                              <AgentV2PredictionPanel
+                                latestClose={
+                                  agentV2News?.trend.latestClose ??
+                                  chartData[chartData.length - 1]?.price ??
+                                  0
+                                }
+                                actualChartDates={displayChartData.map(d => d.date)}
+                                actualChartPrices={displayChartData.map(d => d.price)}
+                                prediction={agentV2Prediction}
+                                loading={agentV2LoadingPrediction}
+                                onGetPrediction={() => {
+                                  if (selectedStock) {
+                                    void loadAgentV2Prediction(selectedStock, agentV2News);
+                                  }
+                                }}
+                              />
+                            </>
+                          ) : (
                           <div className="mt-6 border-t pt-6">
                             <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-2">
@@ -304,6 +356,7 @@ export function Dashboard() {
                               </div>
                             )}
                           </div>
+                          )}
                         </>
                       )}
                     </CardContent>

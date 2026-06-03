@@ -164,7 +164,22 @@ export {
   isMockCatalogProvider,
   dataModeAllowsMockCatalog,
   dataModeUsesLiveQuotes,
+  marketModeUsesYahooLive,
 } from './contracts/market.js';
+
+export type {
+  StockOHLCVPoint,
+  StockTrendAnalysis,
+  DemoMarketNewsItem,
+  CachedDemoMarketNews,
+  SevenDayPrediction,
+} from './stocksAgentV2.js';
+
+export {
+  AGENT_V2_PROMPT_VERSION,
+  AGENT_V2_COMPANY_NAMES,
+  AGENT_V2_SYMBOLS,
+} from './stocksAgentV2.js';
 export type { LiveQuoteProvider } from './contracts/market.js';
 
 export {

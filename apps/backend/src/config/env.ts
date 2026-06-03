@@ -34,6 +34,7 @@ export const env = {
     const mode = process.env.MARKET_DATA_MODE;
     if (mode === 'mock') return 'mock' as const;
     if (mode === 'agent') return 'agent' as const;
+    if (mode === 'agent-v2') return 'agent-v2' as const;
     return 'live' as const;
   })(),
   /** How long to reuse live quotes/news before refetching (default 12h). */

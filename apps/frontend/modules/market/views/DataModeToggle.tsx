@@ -1,4 +1,4 @@
-import { Bot, Database, Radio } from 'lucide-react';
+import { Bot, Database, Radio, Sparkles } from 'lucide-react';
 import type { MarketDataMode } from '@investai/shared';
 import { useMarketData } from '../controllers/MarketDataProvider';
 
@@ -11,6 +11,7 @@ const MODES: {
   { id: 'mock', label: 'Mock', icon: Database },
   { id: 'live', label: 'Live', icon: Radio },
   { id: 'agent', label: 'Agent', icon: Bot, inDevelopment: true },
+  { id: 'agent-v2', label: 'Agent v2', icon: Sparkles, inDevelopment: true },
 ];
 
 export function DataModeToggle() {
@@ -31,6 +32,8 @@ export function DataModeToggle() {
             title={
               id === 'agent'
                 ? 'Agent — LLM chart scrape (in active development; quotes follow Live/Mock setting)'
+                : id === 'agent-v2'
+                  ? 'Agent v2 — Yahoo 30-day trend, synthetic demo news, 7-day scenario prediction'
                 : id === 'live'
                   ? 'Live — Yahoo Finance quotes and charts'
                   : 'Mock — static catalog'
@@ -45,6 +48,8 @@ export function DataModeToggle() {
                   ? 'bg-green-600 text-white shadow-sm'
                   : id === 'agent'
                     ? 'bg-violet-600 text-white shadow-sm'
+                    : id === 'agent-v2'
+                      ? 'bg-emerald-600 text-white shadow-sm'
                     : 'bg-blue-600 text-white shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             } ${switchingMode ? 'opacity-50 cursor-not-allowed' : ''}`}
