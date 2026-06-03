@@ -106,7 +106,9 @@ export async function getModelFromCatalog(
 export function fallbackPricing(modelId: string): OpenRouterModelPricing {
   const defaults: Record<string, { p: number; c: number }> = {
     'qwen/qwen3.5-flash-02-23': { p: 0.065 / 1_000_000, c: 0.26 / 1_000_000 },
-    'google/gemini-2.0-flash-001': { p: 0.1 / 1_000_000, c: 0.4 / 1_000_000 },
+    'deepseek/deepseek-v4-flash': { p: 0.0983 / 1_000_000, c: 0.1966 / 1_000_000 },
+    'google/gemini-2.5-flash': { p: 0.3 / 1_000_000, c: 2.5 / 1_000_000 },
+    'google/gemini-2.0-flash-001': { p: 0.3 / 1_000_000, c: 2.5 / 1_000_000 },
     'deepseek/deepseek-chat-v3-0324': { p: 0.2 / 1_000_000, c: 0.77 / 1_000_000 },
   };
   const d = defaults[modelId] ?? { p: 0.15 / 1_000_000, c: 0.5 / 1_000_000 };

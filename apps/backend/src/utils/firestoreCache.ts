@@ -3,6 +3,22 @@ import { getDb } from '../config/firebase.js';
 
 type TimestampField = 'lastUpdated' | 'createdAt';
 
+/** Firestore rejects `undefined` field values — omit them before setDoc. */
+function stripUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeep).filter(v => v !== undefined);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (child === undefined) continue;
+    const cleaned = stripUndefinedDeep(child);
+    if (cleaned !== undefined) out[key] = cleaned;
+  }
+  return out;
+}
+
 /**
  * Read a Firestore document if younger than ttlMs.
  * Returns null if Firestore unavailable, doc missing, or expired.
@@ -46,11 +62,12 @@ export async function writeFirestoreCache(
 
   try {
     const now = Date.now();
-    await setDoc(doc(db, collection, docId), {
+    const docPayload = stripUndefinedDeep({
       ...payload,
       createdAt: payload.createdAt ?? now,
       lastUpdated: now,
-    });
+    }) as Record<string, unknown>;
+    await setDoc(doc(db, collection, docId), docPayload);
   } catch (error) {
     console.error(`Firestore cache write failed [${collection}/${docId}]:`, error);
   }

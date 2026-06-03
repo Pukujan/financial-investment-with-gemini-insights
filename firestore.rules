@@ -1,0 +1,28 @@
+rules_version = '2';
+// Backend uses the Firebase client SDK without user auth — these rules allow the
+// server (API key + project) to read/write app cache collections.
+// For production, prefer Firebase Admin SDK + locked-down rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function backendCollection(name) {
+      return name in [
+        'aiInsights',
+        'stockPredictions',
+        'marketBulkCache',
+        'marketNewsCache',
+        'agentBulkCache',
+        'agentNewsCache',
+        'ragChunks',
+        'ragRetrievalLogs',
+        'promptEvalExperiments',
+        'promptAbExperiments',
+        'chartEvalRuns',
+        'estimateEvalRuns',
+      ] || name.matches('portfolios_.*');
+    }
+
+    match /{collection}/{docId} {
+      allow read, write: if backendCollection(collection);
+    }
+  }
+}

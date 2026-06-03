@@ -53,7 +53,7 @@ function AppContent({
         ? 'Live (Yahoo)'
         : 'Live (Yahoo)'
       : dataMode === 'agent'
-        ? 'Agent · LLM charts'
+        ? 'Agent · in development'
         : 'Mock catalog';
   const formatTime = (date: Date | null) => {
     if (!date) return '';
@@ -146,6 +146,12 @@ function AppContent({
               );
             })}
           </div>
+          {dataMode === 'agent' && (
+            <p className="py-2 text-xs text-amber-800 border-t border-amber-100 bg-amber-50/80">
+              Agent mode is in active development — chart scrape, cache, and eval tools may be
+              unstable. Use Live mode for reliable market data.
+            </p>
+          )}
         </div>
       </nav>
 

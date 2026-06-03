@@ -14,14 +14,24 @@ const STRENGTH_RANK: Record<AiCostTier, number> = {
   cheap: 3,
 };
 
+/** OpenRouter retired models — map env overrides to current IDs. */
+const DEPRECATED_OPENROUTER_MODELS: Record<string, string> = {
+  'google/gemini-2.0-flash-001': 'deepseek/deepseek-v4-flash',
+  'google/gemini-2.0-flash': 'deepseek/deepseek-v4-flash',
+};
+
+export function resolveOpenRouterModelId(modelId: string): string {
+  return DEPRECATED_OPENROUTER_MODELS[modelId] ?? modelId;
+}
+
 export function getTierModelId(tier: AiCostTier): string {
   switch (tier) {
     case 'cheapest':
-      return env.aiTierCheapest;
+      return resolveOpenRouterModelId(env.aiTierCheapest);
     case 'cheaper':
-      return env.aiTierCheaper;
+      return resolveOpenRouterModelId(env.aiTierCheaper);
     case 'cheap':
-      return env.aiTierCheap;
+      return resolveOpenRouterModelId(env.aiTierCheap);
   }
 }
 

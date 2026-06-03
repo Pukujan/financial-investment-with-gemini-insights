@@ -590,8 +590,10 @@ export function MarketDataProvider({
           void pollAgentJob(job.id);
         }
         return;
-      } catch {
-        /* job gone from server — show cached snapshot */
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'AGENT_JOB_NOT_FOUND') {
+          persistAgentJob(prefs.lastJob ?? null, null);
+        }
       }
     }
 

@@ -46,20 +46,17 @@ OPENROUTER_MODEL_FALLBACK=qwen/qwen3.5-flash-02-23
 4. Select a location closest to your users
 5. Click "Enable"
 
-## 5. Set Firestore Rules (Optional - For Production)
+## 5. Deploy Firestore Rules (required for Railway / production)
 
-For development, test mode works fine. For production, update rules:
+The backend writes cache docs with the **client SDK** (no Firebase Auth session). Default “test mode” rules expire; locked-down rules cause `permission-denied` in logs.
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /portfolios/{portfolioId} {
-      allow read, write: if request.auth != null; // Only authenticated users
-    }
-  }
-}
-```
+1. Install Firebase CLI: `npm i -g firebase-tools`
+2. From repo root: `firebase login` then `firebase use <your-project-id>`
+3. Deploy: `firebase deploy --only firestore:rules`
+
+Rules live in [`firestore.rules`](./firestore.rules) and allow the collections in `apps/backend/src/config/cache.ts` (`marketBulkCache`, `agentBulkCache`, `aiInsights`, `portfolios_<instanceId>`, etc.).
+
+For stricter production security, migrate the backend to the **Firebase Admin SDK** with a service account instead of widening client rules.
 
 ## How It Works
 

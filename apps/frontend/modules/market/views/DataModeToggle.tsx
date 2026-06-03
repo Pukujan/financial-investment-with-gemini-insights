@@ -2,10 +2,15 @@ import { Bot, Database, Radio } from 'lucide-react';
 import type { MarketDataMode } from '@investai/shared';
 import { useMarketData } from '../controllers/MarketDataProvider';
 
-const MODES: { id: MarketDataMode; label: string; icon: typeof Database }[] = [
+const MODES: {
+  id: MarketDataMode;
+  label: string;
+  icon: typeof Database;
+  inDevelopment?: boolean;
+}[] = [
   { id: 'mock', label: 'Mock', icon: Database },
   { id: 'live', label: 'Live', icon: Radio },
-  { id: 'agent', label: 'Agent', icon: Bot },
+  { id: 'agent', label: 'Agent', icon: Bot, inDevelopment: true },
 ];
 
 export function DataModeToggle() {
@@ -17,7 +22,7 @@ export function DataModeToggle() {
       role="group"
       aria-label="Market data source"
     >
-      {MODES.map(({ id, label, icon: Icon }) => {
+      {MODES.map(({ id, label, icon: Icon, inDevelopment }) => {
         const active = dataMode === id;
         return (
           <button
@@ -25,7 +30,7 @@ export function DataModeToggle() {
             type="button"
             title={
               id === 'agent'
-                ? 'Agent — 30-day LLM chart scrape only (no Live/Mock quote fetch)'
+                ? 'Agent — LLM chart scrape (in active development; quotes follow Live/Mock setting)'
                 : id === 'live'
                   ? 'Live — Yahoo Finance quotes and charts'
                   : 'Mock — static catalog'
@@ -46,6 +51,15 @@ export function DataModeToggle() {
           >
             <Icon className="w-3.5 h-3.5" />
             {label}
+            {inDevelopment && (
+              <span
+                className={`rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  active ? 'bg-violet-500/30 text-violet-50' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                Dev
+              </span>
+            )}
           </button>
         );
       })}

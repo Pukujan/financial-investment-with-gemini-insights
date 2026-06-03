@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { resolveOpenRouterModelId } from '../modules/ai-estimate/services/modelTiers.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -175,8 +176,12 @@ export async function callAiWithModel(
   if (!env.openRouterApiKey) {
     throw new Error('OPENROUTER_API_KEY is not set');
   }
-  console.log(`[AI] Using model: ${model}`);
-  return callOpenRouter(prompt, systemPrompt, model, maxTokens, timeoutMs);
+  const resolved = resolveOpenRouterModelId(model);
+  if (resolved !== model) {
+    console.warn(`[AI] Model ${model} is retired on OpenRouter — using ${resolved}`);
+  }
+  console.log(`[AI] Using model: ${resolved}`);
+  return callOpenRouter(prompt, systemPrompt, resolved, maxTokens, timeoutMs);
 }
 
 export async function callAiWithUsageFallback(

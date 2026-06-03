@@ -906,20 +906,7 @@ export async function getAllStocks(options?: {
       };
     }
 
-    const stocks = getAllMockQuotes(getAgentSymbols());
-    logMarketStocks('hit', { source: 'mock-catalog', count: stocks.length });
-    return {
-      stocks,
-      meta: agentStocksMeta(stocks, {
-        provider: MOCK_PROVIDER,
-        failed: 0,
-        fromCache: true,
-        cacheSource: 'mock-catalog',
-        cacheNote:
-          'Symbol list from catalog (display only). 30-day charts come from Agent Start — LLM prompt only.',
-        seriesBySymbol: {},
-      }),
-    };
+    return withTemporaryQuoteMode(() => getAllStocks(options));
   }
 
   assertLiveMarketConfigured();

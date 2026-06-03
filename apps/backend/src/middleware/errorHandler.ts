@@ -25,8 +25,12 @@ export function errorHandler(
         ? 'Internal server error'
         : err.message;
 
-  console.error('[Error]', err);
   const code = err instanceof AppError ? err.code : undefined;
+  if (code === 'AGENT_JOB_NOT_FOUND') {
+    console.warn('[Warn]', err.message, { code });
+  } else {
+    console.error('[Error]', err);
+  }
   res.status(statusCode).json({
     success: false,
     error: message,

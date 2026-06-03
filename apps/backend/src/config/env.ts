@@ -99,7 +99,7 @@ export const env = {
   aiTierCheapest:
     process.env.AI_TIER_CHEAPEST ?? 'qwen/qwen3.5-flash-02-23',
   aiTierCheaper:
-    process.env.AI_TIER_CHEAPER ?? 'google/gemini-2.0-flash-001',
+    process.env.AI_TIER_CHEAPER ?? 'deepseek/deepseek-v4-flash',
   aiTierCheap:
     process.env.AI_TIER_CHEAP ?? 'deepseek/deepseek-chat-v3-0324',
   firebaseAppInstanceId: process.env.FIREBASE_APP_INSTANCE_ID ?? 'financial-app',
@@ -160,10 +160,16 @@ export function validateEnv(): EnvValidationResult {
   for (const [label, model] of [
     ['OPENROUTER_MODEL_PRIMARY', env.openRouterModelPrimary],
     ['OPENROUTER_MODEL_FALLBACK', env.openRouterModelFallback],
+    ['AI_TIER_CHEAPER', env.aiTierCheaper],
   ] as const) {
     if (model.includes(':free')) {
       warnings.push(
         `${label} uses a :free model (${model}) — free tiers are unreliable; use paid models in .env`
+      );
+    }
+    if (model.includes('gemini-2.0-flash')) {
+      warnings.push(
+        `${label} uses retired OpenRouter model (${model}) — set deepseek/deepseek-v4-flash or redeploy after upgrade`
       );
     }
   }
