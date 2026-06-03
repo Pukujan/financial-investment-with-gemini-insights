@@ -14,19 +14,29 @@ export function loadLocalPromptAbV2Tests(): PromptAbV2Experiment[] {
 }
 
 export function persistPromptAbV2Experiment(record: PromptAbV2Experiment): void {
-  const existing = loadLocalPromptAbV2Tests();
-  const next = [record, ...existing.filter(r => r.id !== record.id)].slice(0, 50);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    const byId = new Map(loadLocalPromptAbV2Tests().map(r => [r.id, r]));
+    byId.set(record.id, record);
+    const next = [...byId.values()]
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
+      .slice(0, 50);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* quota */
+  }
 }
 
+/** Same contract as prompt-ab v1 — arrays in, merged history out. */
 export function mergePromptAbV2History(
-  api: PromptAbV2History,
-  local: PromptAbV2Experiment[]
+  apiRecords: PromptAbV2Experiment[],
+  localRecords: PromptAbV2Experiment[]
 ): PromptAbV2History {
   const byId = new Map<string, PromptAbV2Experiment>();
-  for (const r of [...api.records, ...local]) {
-    if (!byId.has(r.id)) byId.set(r.id, r);
+  for (const r of [...apiRecords, ...localRecords]) {
+    byId.set(r.id, r);
   }
-  const records = [...byId.values()].sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  const records = [...byId.values()].sort(
+    (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+  );
   return { records, lastRecord: records[0] ?? null };
 }

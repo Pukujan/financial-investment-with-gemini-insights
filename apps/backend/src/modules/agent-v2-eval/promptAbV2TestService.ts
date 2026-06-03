@@ -21,7 +21,7 @@ import {
   PROMPT_AB_V2_SYMBOLS,
 } from '@investai/shared';
 import { loadEvalHistoryFromDisk } from '../../utils/evalDiskStore.js';
-import { persistEvalTriple } from '../../utils/evalPersistence.js';
+import { loadEvalFromAllSources, persistEvalTriple } from '../../utils/evalPersistence.js';
 import { firestoreCollections } from '../../config/cache.js';
 import { fetchYahooTimeSeries } from '../market/services/yahooProvider.js';
 import { getCatalogFetchedAt } from '../ai-estimate/services/openRouterCatalog.js';
@@ -327,8 +327,13 @@ export async function runPromptAbV2TestWithProgress(
   experiment.runDelta = buildRunDelta(experiment, previous);
   experiment.headline = buildHeadline(experiment);
 
-  history.unshift(experiment);
-  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
+  await persistExperiment(experiment);
+
+  const summary = buildPromptAbV2Summary(experiment);
+  return { experiment, summary };
+}
+
+async function persistExperiment(experiment: PromptAbV2Experiment): Promise<void> {
   await persistEvalTriple({
     collection: firestoreCollections.promptAbV2,
     docId: experiment.id,
@@ -338,38 +343,26 @@ export async function runPromptAbV2TestWithProgress(
     maxHistory: MAX_HISTORY,
     getId: r => r.id,
   });
-
-  const summary = buildPromptAbV2Summary(experiment);
-  return { experiment, summary };
 }
 
 export async function getPromptAbV2History(): Promise<PromptAbV2History> {
-  return {
-    records: [...history],
-    lastRecord: history[0] ?? null,
-  };
+  const { records } = await loadEvalFromAllSources({
+    collection: firestoreCollections.promptAbV2,
+    memory: history,
+    diskPath: HISTORY_FILE,
+    maxRecords: MAX_HISTORY,
+    getId: r => r.id,
+    validate: (item): item is PromptAbV2Experiment =>
+      Boolean(item && typeof item === 'object' && (item as PromptAbV2Experiment).id),
+  });
+  return { records, lastRecord: records[0] ?? null };
 }
 
 export async function syncPromptAbV2FromClient(
   records: PromptAbV2Experiment[]
 ): Promise<PromptAbV2History> {
   for (const record of records) {
-    if (!history.some(r => r.id === record.id)) {
-      history.push(record);
-    }
-  }
-  history.sort((a, b) => b.completedAt.localeCompare(a.completedAt));
-  if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
-  if (history[0]) {
-    await persistEvalTriple({
-      collection: firestoreCollections.promptAbV2,
-      docId: history[0].id,
-      record: history[0],
-      memory: history,
-      diskPath: HISTORY_FILE,
-      maxHistory: MAX_HISTORY,
-      getId: r => r.id,
-    });
+    await persistExperiment(record);
   }
   return getPromptAbV2History();
 }

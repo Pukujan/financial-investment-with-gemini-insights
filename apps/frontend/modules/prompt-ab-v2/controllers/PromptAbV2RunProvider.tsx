@@ -58,6 +58,24 @@ export function PromptAbV2RunProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [running, pollJob]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { job: active } = await promptAbV2JobApi.getActiveJob();
+        if (active && !TERMINAL.has(active.status)) {
+          jobIdRef.current = active.id;
+          setJob(active);
+          setRunning(true);
+        } else if (active?.status === 'completed' && active.experiment) {
+          setJob(active);
+          if (active.summary) setLastSummary(active.summary);
+        }
+      } catch {
+        /* no active job */
+      }
+    })();
+  }, []);
+
   const startTest = useCallback(async () => {
     const created = await promptAbV2JobApi.startJob();
     jobIdRef.current = created.id;
