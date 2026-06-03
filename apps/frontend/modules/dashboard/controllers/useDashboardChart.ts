@@ -8,6 +8,7 @@ import {
   loadAgentChartSeries,
   saveAgentChartSeries,
 } from '../../market/utils/agentChartStorage';
+import { loadAgentV2ChartSeries } from '../../stocks/utils/agentV2ChartStorage';
 
 export type ChartRange = '30d' | '7d' | '3d';
 
@@ -63,6 +64,18 @@ export function useDashboardChart(_stocks: StockQuote[], dataMode: MarketDataMod
             chartSource: 'openrouter-agent',
           };
           requestAgentRefreshPrompt();
+        }
+      }
+
+      if (dataMode === 'agent-v2' && !timeSeries?.length) {
+        const local = loadAgentV2ChartSeries(symbol);
+        if (local) {
+          timeSeries = local.series;
+          meta = {
+            chartNote: local.note,
+            chartStale: local.stale,
+            chartSource: 'yahoo',
+          };
         }
       }
 

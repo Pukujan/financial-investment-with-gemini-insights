@@ -13,6 +13,7 @@ Three implementation modules for **Agent v2** mode only (`MarketDataMode: 'agent
 Supporting:
 
 - `demoMarketNewsCacheService.ts` — 1-day localStorage cache (`stock-demo-market-news:v2:{symbol}`)
+- `sevenDayPredictionCacheService.ts` — 1-day prediction cache per symbol (`stock-demo-seven-day-prediction:v2:{symbol}`)
 - `getOrCreateDemoMarketNewsService.ts` — orchestrates trend → cache → 20 items
 
 ## Flow

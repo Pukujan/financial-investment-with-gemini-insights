@@ -88,5 +88,6 @@ export function analyzeThirtyDayTrend(
     volatility,
     momentum,
     trendSummary,
+    sessionCount: history.length,
   };
 }

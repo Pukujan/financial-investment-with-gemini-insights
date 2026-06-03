@@ -22,6 +22,7 @@ export type StockTrendAnalysis = {
   volatility: 'Low' | 'Medium' | 'High';
   momentum: 'Bullish' | 'Neutral' | 'Bearish';
   trendSummary: string;
+  sessionCount: number;
 };
 
 export type DemoMarketNewsItem = {
@@ -63,6 +64,26 @@ export type SevenDayPrediction = {
   direction: 'Bullish' | 'Neutral' | 'Bearish';
   confidenceScore: number;
   confidenceReason: string;
+  processingSummary: string;
+  reasoningSteps: string[];
+  trendInputsUsed: {
+    priceChangePercent: number;
+    volumeTrend: StockTrendAnalysis['volumeTrend'];
+    volatility: StockTrendAnalysis['volatility'];
+    momentum: StockTrendAnalysis['momentum'];
+    startClose: number;
+    latestClose: number;
+    sessionCount: number;
+  };
+  newsEvaluation: {
+    itemCount: number;
+    weightedSentimentScore: number;
+    positiveCount: number;
+    neutralCount: number;
+    negativeCount: number;
+    highImpactCount: number;
+    alignmentWithTrend: 'aligned' | 'mixed' | 'conflicting';
+  };
   expectedScenario: {
     baseCase: string;
     bullCase: string;
@@ -75,6 +96,15 @@ export type SevenDayPrediction = {
   scenarioPath: Array<{ date: string; price: number; isScenario: true }>;
   generatedAt: string;
   disclaimer: string;
+};
+
+export type CachedSevenDayPrediction = {
+  symbol: string;
+  promptVersion: typeof AGENT_V2_PROMPT_VERSION;
+  generatedAt: string;
+  expiresAt: string;
+  newsGeneratedAt: string;
+  prediction: SevenDayPrediction;
 };
 
 export const AGENT_V2_COMPANY_NAMES: Record<string, string> = {

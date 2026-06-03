@@ -173,6 +173,7 @@ export type {
   DemoMarketNewsItem,
   CachedDemoMarketNews,
   SevenDayPrediction,
+  CachedSevenDayPrediction,
 } from './stocksAgentV2.js';
 
 export {

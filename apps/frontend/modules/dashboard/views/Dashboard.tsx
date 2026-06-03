@@ -26,10 +26,12 @@ export function Dashboard() {
   const {
     demoNews: agentV2News,
     prediction: agentV2Prediction,
+    predictionExpiresAt: agentV2PredictionExpiresAt,
     loadingNews: agentV2LoadingNews,
     loadingPrediction: agentV2LoadingPrediction,
     newsError: agentV2NewsError,
-    loadDemoNews,
+    bindChartSeries,
+    generateDemoNews,
     loadPrediction: loadAgentV2Prediction,
     reset: resetAgentV2,
   } = agentV2;
@@ -53,11 +55,11 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!isAgentV2 || !selectedStock || !timeSeries.length) {
-      resetAgentV2();
+      if (!isAgentV2) resetAgentV2();
       return;
     }
-    void loadDemoNews(selectedStock, timeSeries);
-  }, [isAgentV2, selectedStock, timeSeries, loadDemoNews, resetAgentV2]);
+    bindChartSeries(selectedStock, timeSeries);
+  }, [isAgentV2, selectedStock, timeSeries, bindChartSeries, resetAgentV2]);
 
   const enrichedStocks = stocks.map(stock => ({
     ...stock,
@@ -254,6 +256,12 @@ export function Dashboard() {
                                 payload={agentV2News}
                                 loading={agentV2LoadingNews}
                                 error={agentV2NewsError}
+                                canGenerate={Boolean(selectedStock && timeSeries.length)}
+                                onGenerate={() => {
+                                  if (selectedStock) {
+                                    void generateDemoNews(selectedStock, timeSeries, Boolean(agentV2News));
+                                  }
+                                }}
                               />
                               <AgentV2PredictionPanel
                                 latestClose={
@@ -264,7 +272,9 @@ export function Dashboard() {
                                 actualChartDates={displayChartData.map(d => d.date)}
                                 actualChartPrices={displayChartData.map(d => d.price)}
                                 prediction={agentV2Prediction}
+                                predictionExpiresAt={agentV2PredictionExpiresAt}
                                 loading={agentV2LoadingPrediction}
+                                hasDemoNews={Boolean(agentV2News)}
                                 onGetPrediction={() => {
                                   if (selectedStock) {
                                     void loadAgentV2Prediction(selectedStock, agentV2News);

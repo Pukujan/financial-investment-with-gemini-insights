@@ -14,23 +14,26 @@ export async function getOrCreateDemoMarketNewsForSymbol(input: {
   symbol: string;
   companyName: string;
   history: StockOHLCVPoint[];
+  forceRegenerate?: boolean;
 }): Promise<CachedDemoMarketNews | null> {
   const symbol = input.symbol.toUpperCase();
   const trend = analyzeThirtyDayTrend(symbol, input.history);
   if (!trend) return null;
 
-  const cached = getCachedDemoMarketNews(symbol);
-  if (
-    isDemoMarketNewsCacheValid(cached, symbol) &&
-    cached &&
-    isTrendCompatibleWithCache(
-      cached,
-      trend.momentum,
-      trend.priceChangePercent,
-      trend.volumeTrend
-    )
-  ) {
-    return cached;
+  if (!input.forceRegenerate) {
+    const cached = getCachedDemoMarketNews(symbol);
+    if (
+      isDemoMarketNewsCacheValid(cached, symbol) &&
+      cached &&
+      isTrendCompatibleWithCache(
+        cached,
+        trend.momentum,
+        trend.priceChangePercent,
+        trend.volumeTrend
+      )
+    ) {
+      return cached;
+    }
   }
 
   const generatedAt = new Date().toISOString();

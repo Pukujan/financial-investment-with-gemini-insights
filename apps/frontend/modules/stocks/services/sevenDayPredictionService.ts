@@ -35,6 +35,15 @@ function trendScore(trend: StockTrendAnalysis): number {
   return 0;
 }
 
+function countSentiment(items: DemoMarketNewsItem[]) {
+  return {
+    positive: items.filter(i => i.sentiment === 'positive').length,
+    neutral: items.filter(i => i.sentiment === 'neutral').length,
+    negative: items.filter(i => i.sentiment === 'negative').length,
+    highImpact: items.filter(i => i.impact === 'high').length,
+  };
+}
+
 function buildScenarioPath(
   latestClose: number,
   direction: SevenDayPrediction['direction'],
@@ -93,11 +102,13 @@ export function generateSevenDayPrediction(input: {
       volatility: 'Medium' as const,
       momentum: 'Neutral' as const,
       trendSummary: '30-day market data unavailable.',
+      sessionCount: 0,
     };
 
   const newsScore = weightedSentimentScore(sourceNews);
   const tScore = trendScore(trend);
   const combined = tScore * 0.6 + newsScore * 0.4;
+  const counts = countSentiment(sourceNews);
 
   let direction: SevenDayPrediction['direction'] = 'Neutral';
   if (combined >= 0.35 && trend.momentum !== 'Bearish') direction = 'Bullish';
@@ -108,22 +119,46 @@ export function generateSevenDayPrediction(input: {
   else if (Math.abs(combined) >= 0.25) confidenceScore = 58;
   else confidenceScore = 42;
 
-  if (trend.startClose === 0 && trend.latestClose === 0) confidenceScore = Math.min(confidenceScore, 35);
+  const trendNewsConflict =
+    (tScore > 0 && newsScore < 0) || (tScore < 0 && newsScore > 0);
+
+  if (trend.startClose === 0 && trend.latestClose === 0) {
+    confidenceScore = Math.min(confidenceScore, 35);
+  }
   if (trend.volatility === 'High') confidenceScore -= 8;
-  if ((tScore > 0 && newsScore < 0) || (tScore < 0 && newsScore > 0)) confidenceScore -= 10;
+  if (trendNewsConflict) confidenceScore -= 10;
   if (sourceNews.length < 20) confidenceScore -= 12;
   confidenceScore = Math.max(30, Math.min(80, confidenceScore));
 
+  const alignmentWithTrend: SevenDayPrediction['newsEvaluation']['alignmentWithTrend'] =
+    trendNewsConflict ? 'conflicting' : Math.abs(newsScore) < 0.12 ? 'mixed' : 'aligned';
+
   const confidenceReason =
     trend.startClose === 0 && trend.latestClose === 0
-      ? 'Yahoo 30-day data was unavailable — confidence capped.'
+      ? 'Yahoo 30-day data was unavailable — confidence capped at 35%.'
       : sourceNews.length < 20
-        ? `Only ${sourceNews.length} demo news items available — confidence reduced.`
-        : direction === 'Bullish'
-          ? 'Yahoo trend and synthetic demo news sentiment align bullish.'
-          : direction === 'Bearish'
-            ? 'Yahoo trend and synthetic demo news sentiment align bearish.'
-            : 'Trend and synthetic news are mixed or weak.';
+        ? `Only ${sourceNews.length}/20 demo news items — confidence reduced.`
+        : trendNewsConflict
+          ? 'Yahoo trend and weighted demo news sentiment conflict — confidence reduced.'
+          : direction === 'Bullish'
+            ? `Yahoo ${trend.momentum.toLowerCase()} momentum and weighted positive demo news (${newsScore.toFixed(2)}) align.`
+            : direction === 'Bearish'
+              ? `Yahoo ${trend.momentum.toLowerCase()} momentum and weighted negative demo news (${newsScore.toFixed(2)}) align.`
+              : 'Trend and demo news signals are mixed — neutral scenario.';
+
+  const sessionCount = trend.sessionCount ?? 0;
+
+  const reasoningSteps = [
+    `Read Yahoo 30-day OHLCV: ${trend.priceChangePercent >= 0 ? '+' : ''}${trend.priceChangePercent.toFixed(1)}% from $${trend.startClose.toFixed(2)} → $${trend.latestClose.toFixed(2)}.`,
+    `Trend metrics: momentum ${trend.momentum}, volume ${trend.volumeTrend}, volatility ${trend.volatility}.`,
+    `Evaluated ${sourceNews.length} synthetic demo news items (impact-weighted sentiment score ${newsScore.toFixed(2)}).`,
+    `Combined trend weight 60% + news weight 40% → score ${combined.toFixed(2)} → ${direction} direction.`,
+    `Confidence ${confidenceScore}% after caps (max 80% for demo news; reduced for volatility/conflicts/missing data).`,
+  ];
+
+  const processingSummary =
+    `Evaluated real Yahoo 30-day chart metrics against ${sourceNews.length} cached synthetic demo news items for ${symbol}. ` +
+    `No live news or LLM invented headlines were used. Direction and confidence come from weighted alignment between chart momentum and demo news tone.`;
 
   const latestClose = trend.latestClose || 0;
 
@@ -135,21 +170,38 @@ export function generateSevenDayPrediction(input: {
     direction,
     confidenceScore,
     confidenceReason,
+    processingSummary,
+    reasoningSteps,
+    trendInputsUsed: {
+      priceChangePercent: trend.priceChangePercent,
+      volumeTrend: trend.volumeTrend,
+      volatility: trend.volatility,
+      momentum: trend.momentum,
+      startClose: trend.startClose,
+      latestClose: trend.latestClose,
+      sessionCount,
+    },
+    newsEvaluation: {
+      itemCount: sourceNews.length,
+      weightedSentimentScore: Number(newsScore.toFixed(3)),
+      positiveCount: counts.positive,
+      neutralCount: counts.neutral,
+      negativeCount: counts.negative,
+      highImpactCount: counts.highImpact,
+      alignmentWithTrend,
+    },
     expectedScenario: {
       baseCase: `${symbol} trades near recent levels over the next week with ${trend.volatility.toLowerCase()} volatility.`,
       bullCase: `${symbol} extends the recent constructive 30-day trend if volume stays ${trend.volumeTrend.toLowerCase()}.`,
       bearCase: `${symbol} retraces part of the 30-day move if momentum fades against demo news tone.`,
     },
-    keyReasons: [
-      `30-day price change: ${trend.priceChangePercent.toFixed(1)}%`,
-      `Volume trend: ${trend.volumeTrend}`,
-      `Momentum: ${trend.momentum}`,
-      `Weighted demo news tone: ${newsScore >= 0.15 ? 'positive' : newsScore <= -0.15 ? 'negative' : 'neutral'}`,
-    ],
+    keyReasons: reasoningSteps,
     risks: [
       'Synthetic demo news is not live market reporting.',
       'Scenario path is illustrative, not a forecast of actual prices.',
-      trend.volatility === 'High' ? 'Elevated daily volatility increases scenario uncertainty.' : 'Trend may reverse without notice.',
+      trend.volatility === 'High'
+        ? 'Elevated daily volatility increases scenario uncertainty.'
+        : 'Trend may reverse without notice.',
     ],
     sourceTrend: trend,
     sourceNews,

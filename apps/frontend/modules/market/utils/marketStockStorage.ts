@@ -23,7 +23,7 @@ export interface MarketStockStorageTarget {
 }
 
 function resolveStorageKey(target: MarketStockStorageTarget): string | null {
-  if (target.dataMode === 'live') return LIVE_STORAGE_KEY;
+  if (target.dataMode === 'live' || target.dataMode === 'agent-v2') return LIVE_STORAGE_KEY;
   if (target.dataMode === 'agent') {
     const quote = target.quoteDataMode ?? 'live';
     return agentStorageKey(quote);
@@ -125,6 +125,8 @@ export function buildGroundTruthFromLocalBundle(
     live && isMarketStockBundleFresh(live)
       ? live
       : (() => {
+          const agentV2 = loadMarketStockBundle({ dataMode: 'agent-v2' });
+          if (agentV2 && isMarketStockBundleFresh(agentV2)) return agentV2;
           const agentLive = loadMarketStockBundle({ dataMode: 'agent', quoteDataMode: 'live' });
           return agentLive && isMarketStockBundleFresh(agentLive) ? agentLive : null;
         })();

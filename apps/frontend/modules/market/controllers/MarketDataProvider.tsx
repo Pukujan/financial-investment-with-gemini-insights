@@ -258,7 +258,7 @@ export function MarketDataProvider({
 
   const fetchNewsForMode = useCallback(
     async (mode: MarketDataMode, mergedWarnings: string[], agentTier?: AiCostTier) => {
-    if (mode === 'live' || mode === 'agent') {
+    if (mode === 'live' || mode === 'agent' || mode === 'agent-v2') {
       try {
         const newsResult = await marketApi.getNews(
           mode === 'agent' && agentTier ? { agentTier } : undefined
@@ -267,6 +267,12 @@ export function MarketDataProvider({
         mergedWarnings.push(...collectWarnings(newsResult.meta));
       } catch (newsErr) {
         setNews([]);
+        if (mode === 'agent-v2') {
+          mergedWarnings.push(
+            'Agent v2 uses per-symbol synthetic demo news on the Dashboard — not the global news feed.'
+          );
+          return;
+        }
         if (newsErr instanceof ApiError) {
           setNewsError(newsErr.message);
           setNewsErrorCode(newsErr.code ?? null);
@@ -314,7 +320,7 @@ export function MarketDataProvider({
 
       try {
         const quoteModesNeedCache =
-          effectiveMode === 'live' || effectiveMode === 'agent';
+          effectiveMode === 'live' || effectiveMode === 'agent' || effectiveMode === 'agent-v2';
         let usedLocalCache = false;
 
         if (quoteModesNeedCache && !options?.skipLocalCache) {
@@ -365,7 +371,10 @@ export function MarketDataProvider({
         const metaMode = stockResult.meta?.dataMode;
         const mode =
           options?.forMode ??
-          (metaMode === 'live' || metaMode === 'mock' || metaMode === 'agent'
+          (metaMode === 'live' ||
+          metaMode === 'mock' ||
+          metaMode === 'agent' ||
+          metaMode === 'agent-v2'
             ? metaMode
             : effectiveMode);
 
@@ -427,6 +436,37 @@ export function MarketDataProvider({
           forMode: options?.forMode ?? dataMode,
           error: err,
         });
+
+        const fallbackMode = options?.forMode ?? dataMode;
+        const fallbackStorage = stockStorageTarget(fallbackMode, effectiveQuoteMode);
+        const localFallback = loadMarketStockBundle(fallbackStorage);
+
+        if (
+          !options?.silent &&
+          (fallbackMode === 'live' || fallbackMode === 'agent-v2') &&
+          localFallback?.stocks?.length
+        ) {
+          setStocks(localFallback.stocks);
+          setLastUpdated(new Date(localFallback.cachedAt));
+          const stale = !isMarketStockBundleFresh(localFallback);
+          setError(
+            stale
+              ? 'Using stale Yahoo cache — refresh failed (Yahoo may be rate-limiting). Charts may still load from cache.'
+              : null
+          );
+          setErrorCode(stale ? 'MARKET_LIVE_UNAVAILABLE' : null);
+          const mergedWarnings: string[] = [];
+          if (stale) {
+            mergedWarnings.push(
+              'Live Yahoo refresh failed; showing cached quotes and preloaded 30-day charts from browser storage.'
+            );
+          }
+          await fetchNewsForMode(fallbackMode, mergedWarnings);
+          setWarnings(mergedWarnings);
+          await loadSettings(false);
+          return;
+        }
+
         if (!options?.silent) {
           setStocks([]);
           setNews([]);
